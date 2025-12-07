@@ -21,20 +21,6 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
     // Use professional audit instead of basic mock analysis
     const auditResult = await performProfessionalAudit(file)
 
-    // Map issue types to categories
-    const getCategory = (type: string): "visual" | "accessibility" | "logic" => {
-      // Visual = spacing, alignment, hierarchy, readability, layout structure
-      if (["spacing", "alignment", "hierarchy", "consistency", "cognitive_load"].includes(type)) {
-        return "visual"
-      }
-      // Accessibility = contrast, tap targets, font size, WCAG issues
-      if (["contrast", "accessibility"].includes(type)) {
-        return "accessibility"
-      }
-      // Logic = misleading labels, unclear indicators, ambiguous meaning, incorrect UX patterns
-      return "logic"
-    }
-
     // Convert professional audit format to UXIssue format
     const issues: UXIssue[] = auditResult.issues.map((issue) => {
       // Convert severity 0-4 to critical/major/minor
@@ -53,7 +39,7 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
         cause: getCauseFromType(issue.type, issue.description),
         fix: issue.recommendation,
         severity,
-        category: getCategory(issue.type),
+        category: getCategoryFromType(issue.type),
         coordinates: { x: centerX, y: centerY },
       }
     })
@@ -96,6 +82,27 @@ function getCauseFromType(
   return causes[type] || description
 }
 
+function getCategoryFromType(
+  type: "contrast" | "spacing" | "alignment" | "hierarchy" | "accessibility" | "cognitive_load" | "consistency",
+): "visual" | "accessibility" | "logic" {
+  // Visual = spacing, alignment, hierarchy, consistency, cognitive_load (layout/visual structure)
+  // Accessibility = contrast, accessibility (WCAG issues)
+  // Logic = misleading labels, unclear indicators, ambiguous meaning, incorrect UX patterns
+  // Note: cognitive_load and consistency could be logic, but for now we'll classify them as visual
+  
+  if (type === "contrast" || type === "accessibility") {
+    return "accessibility"
+  }
+  
+  // Visual issues: spacing, alignment, hierarchy, consistency, cognitive_load
+  if (type === "spacing" || type === "alignment" || type === "hierarchy" || type === "consistency" || type === "cognitive_load") {
+    return "visual"
+  }
+  
+  // Default to visual for unknown types
+  return "visual"
+}
+
 // Fallback basic analysis if professional audit fails
 async function analyzeBasicFallback(file: File, screenshotId: string): Promise<UXIssue[]> {
   const issues: UXIssue[] = []
@@ -115,16 +122,16 @@ async function analyzeBasicFallback(file: File, screenshotId: string): Promise<U
   issues.push(...contrastIssues, ...spacingIssues, ...touchTargetIssues, ...alignmentIssues, ...densityIssues)
 
   if (issues.length === 0) {
-    issues.push({
-      id: `${screenshotId}-no-issues`,
-      screenshotId,
-      problem: "No critical UX issues detected",
-      cause: "The screen follows basic UX principles",
-      fix: "Consider user testing to identify edge cases",
-      severity: "minor",
-      category: "visual",
-      coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
-    })
+      issues.push({
+        id: `${screenshotId}-no-issues`,
+        screenshotId,
+        problem: "No critical UX issues detected",
+        cause: "The screen follows basic UX principles",
+        fix: "Consider user testing to identify edge cases",
+        severity: "minor",
+        category: "visual",
+        coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
+      })
   }
 
   return issues
