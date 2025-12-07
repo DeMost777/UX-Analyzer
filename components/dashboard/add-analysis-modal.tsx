@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useDropzone } from "react-dropzone"
+import { getCurrentUser } from "@/lib/firebase/auth"
+import { uploadScreenshot, getFileSizeMB } from "@/lib/firebase/storage"
+import { createAnalysis, incrementUsageStats, updateAnalysis } from "@/lib/firebase/firestore"
 import type { Analysis } from "@/lib/db/types"
 
 interface AddAnalysisModalProps {
@@ -46,25 +49,45 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
     setUploading(true)
 
     try {
-      // Create analysis record
-      const analysisResponse = await fetch("/api/analyses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          screenshot_url: preview, // In production, upload to storage first
-        }),
-      })
-
-      if (!analysisResponse.ok) {
-        throw new Error("Failed to create analysis")
+      const currentUser = getCurrentUser()
+      if (!currentUser) {
+        throw new Error("User not authenticated")
       }
 
-      const { analysis } = await analysisResponse.json()
-      onAnalysisCreated(analysis)
-    } catch (error) {
+      // Create analysis record first
+      const analysis = await createAnalysis({
+        user_id: currentUser.uid,
+        title: title.trim(),
+      })
+
+      // Upload screenshot to Firebase Storage
+      let screenshotUrl = preview || ""
+      if (file) {
+        screenshotUrl = await uploadScreenshot(file, currentUser.uid, analysis.analysis_id)
+        
+        // Update analysis with screenshot URL
+        await updateAnalysis(analysis.analysis_id, {
+          screenshot_url: screenshotUrl,
+        })
+
+        // Update usage stats
+        const fileSizeMB = getFileSizeMB(file)
+        await incrementUsageStats(currentUser.uid, "storage_used_mb", fileSizeMB)
+      }
+
+      // Update analysis with screenshot URL
+      const updatedAnalysis = await updateAnalysis(analysis.analysis_id, {
+        screenshot_url: screenshotUrl,
+      })
+
+      if (updatedAnalysis) {
+        onAnalysisCreated(updatedAnalysis)
+      } else {
+        onAnalysisCreated(analysis)
+      }
+    } catch (error: any) {
       console.error("Failed to create analysis:", error)
-      alert("Failed to create analysis. Please try again.")
+      alert(error.message || "Failed to create analysis. Please try again.")
     } finally {
       setUploading(false)
     }

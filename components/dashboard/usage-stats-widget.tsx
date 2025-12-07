@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { BarChart3, FileText, HardDrive } from "lucide-react"
+import { getCurrentUser } from "@/lib/firebase/auth"
+import { getUsageStats } from "@/lib/firebase/firestore"
 import type { UsageStats } from "@/lib/db/types"
 
 export function UsageStatsWidget() {
@@ -14,11 +16,14 @@ export function UsageStatsWidget() {
 
   const loadStats = async () => {
     try {
-      const response = await fetch("/api/stats")
-      if (response.ok) {
-        const data = await response.json()
-        setStats(data.stats)
+      const currentUser = getCurrentUser()
+      if (!currentUser) {
+        setLoading(false)
+        return
       }
+
+      const userStats = await getUsageStats(currentUser.uid)
+      setStats(userStats)
     } catch (error) {
       console.error("Failed to load stats:", error)
     } finally {

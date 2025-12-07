@@ -6,6 +6,8 @@ import { LoginScreen } from "@/components/auth/login-screen"
 import { SignupScreen } from "@/components/auth/signup-screen"
 import { DashboardScreen } from "@/components/dashboard/dashboard-screen"
 import { FlowUXApp } from "@/components/flow-ux-app"
+import { onAuthStateChange, logoutUser, getCurrentUser } from "@/lib/firebase/auth"
+import { getUserData } from "@/lib/firebase/auth"
 import type { Analysis } from "@/lib/db/types"
 import type { AnalysisResult } from "@/lib/types"
 
@@ -18,26 +20,27 @@ export function AppWrapper() {
   const [currentAnalysis, setCurrentAnalysis] = useState<Analysis | null>(null)
 
   useEffect(() => {
-    checkAuth()
-  }, [])
-
-  const checkAuth = async () => {
-    try {
-      const response = await fetch("/api/auth/me")
-      if (response.ok) {
-        const data = await response.json()
-        setUser(data.user)
+    // Listen to Firebase auth state changes
+    const unsubscribe = onAuthStateChange(async (firebaseUser) => {
+      if (firebaseUser) {
+        // Get additional user data from Firestore
+        const userData = await getUserData(firebaseUser.uid)
+        setUser({
+          user_id: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || userData?.displayName,
+          avatar_url: firebaseUser.photoURL || userData?.photoURL,
+        })
         setView("dashboard")
       } else {
+        setUser(null)
         setView("login")
       }
-    } catch (error) {
-      console.error("Auth check error:", error)
-      setView("login")
-    } finally {
       setLoading(false)
-    }
-  }
+    })
+
+    return () => unsubscribe()
+  }, [])
 
   const handleLogin = (userData: any) => {
     setUser(userData)
@@ -49,10 +52,15 @@ export function AppWrapper() {
     setView("dashboard")
   }
 
-  const handleLogout = () => {
-    setUser(null)
-    setView("login")
-    setCurrentAnalysis(null)
+  const handleLogout = async () => {
+    try {
+      await logoutUser()
+      setUser(null)
+      setView("login")
+      setCurrentAnalysis(null)
+    } catch (error) {
+      console.error("Logout error:", error)
+    }
   }
 
   const handleViewAnalysis = (analysis: Analysis) => {

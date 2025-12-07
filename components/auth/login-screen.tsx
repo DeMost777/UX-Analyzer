@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Mail, Lock, Chrome } from "lucide-react"
 import { Logo } from "@/components/logo"
+import { loginUser, loginWithGoogle } from "@/lib/firebase/auth"
 
 interface LoginScreenProps {
   onLogin: (user: any) => void
@@ -24,30 +25,35 @@ export function LoginScreen({ onLogin, onSwitchToSignup }: LoginScreenProps) {
     setError("")
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+      const user = await loginUser(email, password)
+      onLogin({
+        user_id: user.uid,
+        email: user.email,
+        name: user.displayName,
+        avatar_url: user.photoURL,
       })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.error || "Failed to login")
-        setLoading(false)
-        return
-      }
-
-      onLogin(data.user)
-    } catch (err) {
-      setError("An error occurred. Please try again.")
+    } catch (err: any) {
+      setError(err.message || "Failed to login. Please check your credentials.")
       setLoading(false)
     }
   }
 
-  const handleGoogleLogin = () => {
-    // TODO: Implement Google OAuth
-    alert("Google OAuth coming soon!")
+  const handleGoogleLogin = async () => {
+    setLoading(true)
+    setError("")
+
+    try {
+      const user = await loginWithGoogle()
+      onLogin({
+        user_id: user.uid,
+        email: user.email,
+        name: user.displayName,
+        avatar_url: user.photoURL,
+      })
+    } catch (err: any) {
+      setError(err.message || "Failed to login with Google")
+      setLoading(false)
+    }
   }
 
   return (

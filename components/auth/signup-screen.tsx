@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Mail, Lock, User, Chrome } from "lucide-react"
 import { Logo } from "@/components/logo"
+import { registerUser, loginWithGoogle } from "@/lib/firebase/auth"
 
 interface SignupScreenProps {
   onSignup: (user: any) => void
@@ -25,42 +26,35 @@ export function SignupScreen({ onSignup, onSwitchToLogin }: SignupScreenProps) {
     setError("")
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name }),
+      const user = await registerUser(email, password, name)
+      onSignup({
+        user_id: user.uid,
+        email: user.email,
+        name: user.displayName,
+        avatar_url: user.photoURL,
       })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.error || "Failed to sign up")
-        setLoading(false)
-        return
-      }
-
-      // Auto-login after signup
-      const loginResponse = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const loginData = await loginResponse.json()
-      if (loginResponse.ok) {
-        onSignup(loginData.user)
-      } else {
-        onSignup(data.user)
-      }
-    } catch (err) {
-      setError("An error occurred. Please try again.")
+    } catch (err: any) {
+      setError(err.message || "Failed to sign up. Please try again.")
       setLoading(false)
     }
   }
 
-  const handleGoogleSignup = () => {
-    // TODO: Implement Google OAuth
-    alert("Google OAuth coming soon!")
+  const handleGoogleSignup = async () => {
+    setLoading(true)
+    setError("")
+
+    try {
+      const user = await loginWithGoogle()
+      onSignup({
+        user_id: user.uid,
+        email: user.email,
+        name: user.displayName,
+        avatar_url: user.photoURL,
+      })
+    } catch (err: any) {
+      setError(err.message || "Failed to sign up with Google")
+      setLoading(false)
+    }
   }
 
   return (

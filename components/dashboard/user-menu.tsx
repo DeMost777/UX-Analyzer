@@ -36,7 +36,8 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" })
+      const { logoutUser } = await import("@/lib/firebase/auth")
+      await logoutUser()
       onLogout()
     } catch (error) {
       console.error("Logout error:", error)

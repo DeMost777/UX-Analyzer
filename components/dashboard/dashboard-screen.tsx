@@ -9,6 +9,8 @@ import { UserMenu } from "./user-menu"
 import { UsageStatsWidget } from "./usage-stats-widget"
 import { EmptyState } from "./empty-state"
 import { AddAnalysisModal } from "./add-analysis-modal"
+import { getCurrentUser } from "@/lib/firebase/auth"
+import { getAnalysesByUserId, searchAnalyses, deleteAnalysis as deleteAnalysisFirestore, updateAnalysis as updateAnalysisFirestore } from "@/lib/firebase/firestore"
 import type { Analysis } from "@/lib/db/types"
 import type { AnalysisResult } from "@/lib/types"
 
@@ -35,24 +37,41 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
   }, [])
 
   useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredAnalyses(analyses)
-    } else {
-      const query = searchQuery.toLowerCase()
-      setFilteredAnalyses(
-        analyses.filter((a) => a.title.toLowerCase().includes(query) || a.status.toLowerCase().includes(query)),
-      )
+    const performSearch = async () => {
+      const currentUser = getCurrentUser()
+      if (!currentUser) return
+
+      if (searchQuery.trim() === "") {
+        setFilteredAnalyses(analyses)
+      } else {
+        try {
+          const searchResults = await searchAnalyses(currentUser.uid, searchQuery)
+          setFilteredAnalyses(searchResults)
+        } catch (error) {
+          console.error("Search error:", error)
+          // Fallback to client-side filtering
+          const query = searchQuery.toLowerCase()
+          setFilteredAnalyses(
+            analyses.filter((a) => a.title.toLowerCase().includes(query) || a.status.toLowerCase().includes(query)),
+          )
+        }
+      }
     }
+
+    performSearch()
   }, [searchQuery, analyses])
 
   const loadAnalyses = async () => {
     try {
-      const response = await fetch("/api/analyses")
-      if (response.ok) {
-        const data = await response.json()
-        setAnalyses(data.analyses || [])
-        setFilteredAnalyses(data.analyses || [])
+      const currentUser = getCurrentUser()
+      if (!currentUser) {
+        setLoading(false)
+        return
       }
+
+      const userAnalyses = await getAnalysesByUserId(currentUser.uid)
+      setAnalyses(userAnalyses)
+      setFilteredAnalyses(userAnalyses)
     } catch (error) {
       console.error("Failed to load analyses:", error)
     } finally {
@@ -67,11 +86,8 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
 
   const handleDeleteAnalysis = async (analysisId: string) => {
     try {
-      const response = await fetch(`/api/analyses/${analysisId}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
+      const success = await deleteAnalysisFirestore(analysisId)
+      if (success) {
         setAnalyses(analyses.filter((a) => a.analysis_id !== analysisId))
       }
     } catch (error) {
@@ -81,15 +97,9 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
 
   const handleRenameAnalysis = async (analysisId: string, newTitle: string) => {
     try {
-      const response = await fetch(`/api/analyses/${analysisId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newTitle }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setAnalyses(analyses.map((a) => (a.analysis_id === analysisId ? data.analysis : a)))
+      const updated = await updateAnalysisFirestore(analysisId, { title: newTitle })
+      if (updated) {
+        setAnalyses(analyses.map((a) => (a.analysis_id === analysisId ? updated : a)))
       }
     } catch (error) {
       console.error("Failed to rename analysis:", error)
