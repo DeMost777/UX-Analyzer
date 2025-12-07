@@ -1,4 +1,5 @@
 import type { UXIssue } from "@/lib/types"
+import { performProfessionalAudit } from "./professional-ux-audit"
 
 interface AnalysisContext {
   imageData: ImageData
@@ -7,25 +8,96 @@ interface AnalysisContext {
   screenshotId: string
 }
 
+/**
+ * Analyze screenshot using professional UX audit based on:
+ * - Nielsen Heuristics
+ * - WCAG 2.2 AA accessibility rules
+ * - Visual hierarchy (contrast, typography, spacing)
+ * - Cognitive load principles (Hick's Law, Miller's Law, Gestalt)
+ * - Component consistency and interaction logic
+ */
 export async function analyzeScreenshot(file: File, screenshotId: string): Promise<UXIssue[]> {
-  const issues: UXIssue[] = []
+  try {
+    // Use professional audit instead of basic mock analysis
+    const auditResult = await performProfessionalAudit(file)
 
-  // Load image and extract pixel data
+    // Convert professional audit format to UXIssue format
+    const issues: UXIssue[] = auditResult.issues.map((issue) => {
+      // Convert severity 0-4 to critical/major/minor
+      let severity: "critical" | "major" | "minor" = "minor"
+      if (issue.severity >= 4) severity = "critical"
+      else if (issue.severity >= 2) severity = "major"
+
+      // Convert bounding box [x1, y1, x2, y2] to center point {x, y}
+      const centerX = Math.floor((issue.coordinates[0] + issue.coordinates[2]) / 2)
+      const centerY = Math.floor((issue.coordinates[1] + issue.coordinates[3]) / 2)
+
+      return {
+        id: issue.id,
+        screenshotId,
+        problem: issue.description,
+        cause: getCauseFromType(issue.type, issue.description),
+        fix: issue.recommendation,
+        severity,
+        coordinates: { x: centerX, y: centerY },
+      }
+    })
+
+    // If no issues found, provide positive feedback
+    if (issues.length === 0) {
+      issues.push({
+        id: `${screenshotId}-no-issues`,
+        screenshotId,
+        problem: "No critical UX issues detected",
+        cause: "The screen follows WCAG 2.2 AA standards and UX best practices",
+        fix: "Continue following accessibility guidelines and consider user testing for edge cases",
+        severity: "minor",
+        coordinates: { x: 0, y: 0 },
+      })
+    }
+
+    return issues
+  } catch (error) {
+    console.error("Professional audit error, falling back to basic analysis:", error)
+    // Fallback to basic analysis if professional audit fails
+    return analyzeBasicFallback(file, screenshotId)
+  }
+}
+
+function getCauseFromType(
+  type: "contrast" | "spacing" | "alignment" | "hierarchy" | "accessibility" | "cognitive_load" | "consistency",
+  description: string,
+): string {
+  const causes: Record<string, string> = {
+    contrast: "WCAG 2.2 AA (1.4.3) requires minimum 4.5:1 contrast ratio for normal text",
+    spacing: "Gestalt Principle of Proximity: Inconsistent spacing breaks visual grouping",
+    alignment: "Gestalt Principle of Continuity: Misalignment disrupts visual flow",
+    hierarchy: "Insufficient visual hierarchy makes it difficult to distinguish importance levels",
+    accessibility: "WCAG 2.2 AA accessibility requirement not met",
+    cognitive_load: "Miller's Law: Too many elements exceed the 7±2 cognitive limit",
+    consistency: "Nielsen Heuristic #4: Inconsistent design patterns violate user expectations",
+  }
+  return causes[type] || description
+}
+
+// Fallback basic analysis if professional audit fails
+async function analyzeBasicFallback(file: File, screenshotId: string): Promise<UXIssue[]> {
+  const issues: UXIssue[] = []
   const ctx = await getImageContext(file)
   if (!ctx) return generateFallbackIssues(screenshotId, 375, 812)
 
   const { imageData, width, height } = ctx
+  const contextWithId = { ...ctx, screenshotId }
 
   // Run all analysis checks
-  const contrastIssues = analyzeContrast(ctx, screenshotId)
-  const spacingIssues = analyzeSpacing(ctx, screenshotId)
-  const touchTargetIssues = analyzeTouchTargets(ctx, screenshotId)
-  const alignmentIssues = analyzeAlignment(ctx, screenshotId)
-  const densityIssues = analyzeContentDensity(ctx, screenshotId)
+  const contrastIssues = analyzeContrast(contextWithId, screenshotId)
+  const spacingIssues = analyzeSpacing(contextWithId, screenshotId)
+  const touchTargetIssues = analyzeTouchTargets(contextWithId, screenshotId)
+  const alignmentIssues = analyzeAlignment(contextWithId, screenshotId)
+  const densityIssues = analyzeContentDensity(contextWithId, screenshotId)
 
   issues.push(...contrastIssues, ...spacingIssues, ...touchTargetIssues, ...alignmentIssues, ...densityIssues)
 
-  // If no issues found, generate contextual feedback
   if (issues.length === 0) {
     issues.push({
       id: `${screenshotId}-no-issues`,
