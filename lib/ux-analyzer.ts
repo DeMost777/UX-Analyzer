@@ -21,6 +21,20 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
     // Use professional audit instead of basic mock analysis
     const auditResult = await performProfessionalAudit(file)
 
+    // Map issue types to categories
+    const getCategory = (type: string): "visual" | "accessibility" | "logic" => {
+      // Visual = spacing, alignment, hierarchy, readability, layout structure
+      if (["spacing", "alignment", "hierarchy", "consistency", "cognitive_load"].includes(type)) {
+        return "visual"
+      }
+      // Accessibility = contrast, tap targets, font size, WCAG issues
+      if (["contrast", "accessibility"].includes(type)) {
+        return "accessibility"
+      }
+      // Logic = misleading labels, unclear indicators, ambiguous meaning, incorrect UX patterns
+      return "logic"
+    }
+
     // Convert professional audit format to UXIssue format
     const issues: UXIssue[] = auditResult.issues.map((issue) => {
       // Convert severity 0-4 to critical/major/minor
@@ -39,6 +53,7 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
         cause: getCauseFromType(issue.type, issue.description),
         fix: issue.recommendation,
         severity,
+        category: getCategory(issue.type),
         coordinates: { x: centerX, y: centerY },
       }
     })
@@ -52,6 +67,7 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
         cause: "The screen follows WCAG 2.2 AA standards and UX best practices",
         fix: "Continue following accessibility guidelines and consider user testing for edge cases",
         severity: "minor",
+        category: "visual",
         coordinates: { x: 0, y: 0 },
       })
     }
@@ -106,6 +122,7 @@ async function analyzeBasicFallback(file: File, screenshotId: string): Promise<U
       cause: "The screen follows basic UX principles",
       fix: "Consider user testing to identify edge cases",
       severity: "minor",
+      category: "visual",
       coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
     })
   }
@@ -178,6 +195,7 @@ function analyzeContrast(ctx: AnalysisContext, screenshotId: string): UXIssue[] 
         cause: `Contrast ratio is approximately ${contrast.toFixed(1)}:1, below WCAG AA requirement of 4.5:1`,
         fix: "Increase contrast between text and background colors to at least 4.5:1 for normal text",
         severity: contrast < 2 ? "critical" : "major",
+        category: "accessibility",
         coordinates: {
           x: Math.floor(region.x * scaleX + (region.size * scaleX) / 2),
           y: Math.floor(region.y * scaleY + (region.size * scaleY) / 2),
@@ -215,6 +233,7 @@ function analyzeSpacing(ctx: AnalysisContext, screenshotId: string): UXIssue[] {
         cause: "Spacing values vary significantly across the layout",
         fix: "Apply consistent spacing using an 8px grid system (8, 16, 24, 32px)",
         severity: "major",
+        category: "visual",
         coordinates: {
           x: Math.floor(first.x * scaleX),
           y: Math.floor(first.y * scaleY),
@@ -249,6 +268,7 @@ function analyzeTouchTargets(ctx: AnalysisContext, screenshotId: string): UXIssu
         cause: `Estimated size ${Math.round(targetWidth)}x${Math.round(targetHeight)}px is below 44x44px minimum`,
         fix: "Increase touch target to at least 44x44 pixels for better accessibility",
         severity: "major",
+        category: "accessibility",
         coordinates: {
           x: Math.floor(cluster.x * scaleX),
           y: Math.floor(cluster.y * scaleY),
@@ -283,6 +303,7 @@ function analyzeAlignment(ctx: AnalysisContext, screenshotId: string): UXIssue[]
       cause: "Content near center is offset by a few pixels",
       fix: "Use proper centering techniques (flexbox justify-center, margin auto)",
       severity: "minor",
+      category: "visual",
       coordinates: {
         x: Math.floor(first.x * scaleX),
         y: Math.floor(first.y * scaleY),
@@ -327,6 +348,7 @@ function analyzeContentDensity(ctx: AnalysisContext, screenshotId: string): UXIs
       cause: "Screen contains many elements competing for attention",
       fix: "Increase whitespace, group related elements, reduce cognitive load",
       severity: "major",
+      category: "visual",
       coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 3) },
     })
   }
@@ -533,6 +555,7 @@ function generateFallbackIssues(screenshotId: string, width: number, height: num
       cause: "Image format or loading prevented detailed analysis",
       fix: "Ensure image is a standard PNG or JPG format",
       severity: "minor",
+      category: "visual",
       coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
     },
   ]

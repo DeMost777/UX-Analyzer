@@ -13,6 +13,7 @@ export interface Screenshot {
     cause: string
     fix: string
     severity: "critical" | "major" | "minor"
+    category: "visual" | "accessibility" | "logic"
     coordinates: {
       x: number
       y: number
