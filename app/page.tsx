@@ -1,5 +1,5 @@
-import { FlowUXApp } from "@/components/flow-ux-app"
+import { AppWrapper } from "@/components/app-wrapper"
 
 export default function Home() {
-  return <FlowUXApp />
+  return <AppWrapper />
 }
