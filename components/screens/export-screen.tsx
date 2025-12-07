@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, FileCode, Check, Download, Copy, Loader2 } from "lucide-react"
+import { ArrowLeft, FileCode, FileText, Check, Download, Copy, Loader2 } from "lucide-react"
 import type { AnalysisResult } from "@/lib/types"
+import { generatePDF } from "@/lib/pdf-generator"
 
 interface ExportScreenProps {
   analysisResult: AnalysisResult
@@ -12,7 +13,9 @@ interface ExportScreenProps {
 
 export function ExportScreen({ analysisResult, onBack }: ExportScreenProps) {
   const [isExporting, setIsExporting] = useState(false)
+  const [isExportingPDF, setIsExportingPDF] = useState(false)
   const [exportComplete, setExportComplete] = useState(false)
+  const [exportPDFComplete, setExportPDFComplete] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const generateMarkdown = () => {
@@ -104,6 +107,22 @@ ${issues
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const handleExportPDF = async () => {
+    setIsExportingPDF(true)
+    try {
+      // Small delay to show loading state
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      generatePDF(analysisResult)
+      setExportPDFComplete(true)
+      setTimeout(() => setExportPDFComplete(false), 3000)
+    } catch (error) {
+      console.error("Error generating PDF:", error)
+      alert("Failed to generate PDF. Please try again.")
+    } finally {
+      setIsExportingPDF(false)
+    }
+  }
+
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-background">
       <div className="mx-auto max-w-4xl p-6">
@@ -118,55 +137,97 @@ ${issues
             Back to Review
           </Button>
           <h1 className="text-2xl font-semibold tracking-tight">Export Report</h1>
-          <p className="text-muted-foreground mt-1">Download your UX audit findings as Markdown</p>
+          <p className="text-muted-foreground mt-1">Download your UX audit findings in multiple formats</p>
         </div>
 
-        {/* Export Card */}
-        <div className="mb-6 rounded-xl border border-primary bg-primary/5 p-6">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <FileCode className="h-6 w-6" />
+        {/* Export Section */}
+        <div className="rounded-xl border border-border bg-card p-6 mb-6">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+              <FileCode className="h-6 w-6 text-foreground" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">Markdown Report</h2>
+              <h2 className="text-lg font-semibold">Export Report</h2>
               <p className="text-sm text-muted-foreground">
-                Compatible with GitHub, Notion, Obsidian, and any markdown editor
+                Download your UX audit findings in multiple formats
               </p>
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <Button onClick={handleExport} disabled={isExporting} className="gap-2" size="lg">
-              {isExporting ? (
+          {/* Export Buttons Row */}
+          <div className="flex flex-col sm:flex-row gap-3 w-full">
+            {/* PDF Export Button - Left (First) */}
+            <Button
+              variant="secondary"
+              onClick={handleExportPDF}
+              disabled={isExportingPDF}
+              className="gap-2 flex-1 w-full sm:w-auto"
+              size="lg"
+              aria-label="Download PDF report"
+            >
+              {isExportingPDF ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Exporting...
+                  Generating PDF...
                 </>
-              ) : exportComplete ? (
+              ) : exportPDFComplete ? (
                 <>
                   <Check className="h-4 w-4" />
                   Downloaded!
                 </>
               ) : (
                 <>
-                  <Download className="h-4 w-4" />
-                  Download .md
+                  <FileText className="h-4 w-4" />
+                  Download PDF
                 </>
               )}
             </Button>
-            <Button variant="outline" onClick={handleCopy} className="gap-2 bg-transparent" size="lg">
-              {copied ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  Copy to Clipboard
-                </>
-              )}
-            </Button>
+
+            {/* Markdown Export Buttons - Right */}
+            <div className="flex gap-3 flex-1 w-full sm:w-auto">
+              <Button
+                variant="secondary"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="gap-2 flex-1"
+                size="lg"
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : exportComplete ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Downloaded!
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    Download .md
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleCopy}
+                className="gap-2"
+                size="lg"
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    Copy
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
 
