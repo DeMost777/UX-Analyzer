@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Loader2, Mail, Lock, Chrome } from "lucide-react"
 import { Logo } from "@/components/logo"
 import { loginUser, loginWithGoogle } from "@/lib/firebase/auth"
+import { checkDomainAuthorization, getFirebaseConsoleLink, mapFirebaseAuthError } from "@/lib/firebase/auth-helpers"
 
 interface LoginScreenProps {
   onLogin: (user: any) => void
@@ -18,6 +19,9 @@ export function LoginScreen({ onLogin, onSwitchToSignup }: LoginScreenProps) {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+
+  // Check domain authorization on mount
+  const domainCheck = checkDomainAuthorization()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +37,7 @@ export function LoginScreen({ onLogin, onSwitchToSignup }: LoginScreenProps) {
         avatar_url: user.photoURL,
       })
     } catch (err: any) {
-      setError(err.message || "Failed to login. Please check your credentials.")
+      setError(mapFirebaseAuthError(err))
       setLoading(false)
     }
   }
@@ -51,7 +55,7 @@ export function LoginScreen({ onLogin, onSwitchToSignup }: LoginScreenProps) {
         avatar_url: user.photoURL,
       })
     } catch (err: any) {
-      setError(err.message || "Failed to login with Google")
+      setError(mapFirebaseAuthError(err))
       setLoading(false)
     }
   }
@@ -68,7 +72,7 @@ export function LoginScreen({ onLogin, onSwitchToSignup }: LoginScreenProps) {
           <p className="mb-6 text-sm text-gray-400">Sign in to your account to continue</p>
 
           {error && (
-            <div className="mb-4 rounded-md bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+            <div className="mb-4 rounded-md bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 whitespace-pre-line">
               {error}
             </div>
           )}

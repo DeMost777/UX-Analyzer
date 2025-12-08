@@ -16,6 +16,35 @@ import {
 import { db } from "./config"
 import type { Analysis, UsageStats } from "@/lib/db/types"
 
+// Helper function to remove undefined values from an object
+// Firestore does not allow undefined values
+function removeUndefined<T extends Record<string, any>>(obj: T): T {
+  const cleaned: any = {}
+  for (const key in obj) {
+    const value = obj[key]
+    // Explicitly check for undefined (not just falsy values)
+    if (value !== undefined) {
+      // Also check nested objects/arrays
+      // Skip Firestore Timestamps (they have toDate method) and Date objects
+      if (value && typeof value === "object") {
+        const valueObj = value as any
+        // Check if it's a Date or Firestore Timestamp
+        if (valueObj instanceof Date || typeof valueObj.toDate === "function") {
+          cleaned[key] = value
+        } else if (!Array.isArray(value)) {
+          // Recursively clean nested objects
+          cleaned[key] = removeUndefined(value)
+        } else {
+          cleaned[key] = value
+        }
+      } else {
+        cleaned[key] = value
+      }
+    }
+  }
+  return cleaned as T
+}
+
 // Check if Firestore is initialized
 function checkFirestore() {
   if (!db) {
@@ -74,21 +103,54 @@ export async function createAnalysis(input: {
 }): Promise<Analysis> {
   checkFirestore()
   const analysisRef = doc(collection(db!, "analyses"))
+  
+  // Prepare Firestore document data
+  // CRITICAL: Firestore does not allow undefined values - we must never include them
+  const firestoreData: Record<string, any> = {
+    user_id: input.user_id,
+    title: input.title,
+    status: "processing",
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  }
+
+  // Only add screenshot_url if it's a valid non-empty string
+  // Explicitly check for all invalid cases to prevent undefined from reaching Firestore
+  const hasValidScreenshotUrl =
+    input.screenshot_url !== undefined &&
+    input.screenshot_url !== null &&
+    input.screenshot_url !== "" &&
+    typeof input.screenshot_url === "string" &&
+    input.screenshot_url.trim().length > 0
+
+  if (hasValidScreenshotUrl) {
+    firestoreData.screenshot_url = input.screenshot_url
+  }
+  // If screenshot_url is invalid, we don't include it at all (Firestore will not have this field)
+
+  // Remove any undefined values as a final safety check
+  const cleanedData = removeUndefined(firestoreData)
+  
+  // Double-check: ensure no undefined values exist (defensive programming)
+  for (const key in cleanedData) {
+    if (cleanedData[key] === undefined) {
+      console.error(`ERROR: Found undefined value in field "${key}" before setDoc. Removing it.`)
+      delete cleanedData[key]
+    }
+  }
+  
+  await setDoc(analysisRef, cleanedData)
+
+  // Return analysis object with ISO timestamps
   const analysis: Analysis = {
     analysis_id: analysisRef.id,
     user_id: input.user_id,
     title: input.title,
     status: "processing",
-    screenshot_url: input.screenshot_url,
+    screenshot_url: input.screenshot_url || undefined,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }
-
-  await setDoc(analysisRef, {
-    ...analysis,
-    created_at: serverTimestamp(),
-    updated_at: serverTimestamp(),
-  })
 
   return analysis
 }
@@ -106,8 +168,8 @@ export async function getAnalysisById(analysisId: string): Promise<Analysis | nu
     user_id: data.user_id,
     title: data.title,
     status: data.status,
-    screenshot_url: data.screenshot_url,
-    result_json: data.result_json,
+    screenshot_url: data.screenshot_url || undefined, // Convert null/empty to undefined for TypeScript
+    result_json: data.result_json || undefined,
     created_at: timestampToISO(data.created_at),
     updated_at: timestampToISO(data.updated_at),
   }
@@ -130,8 +192,8 @@ export async function getAnalysesByUserId(userId: string, maxResults = 50): Prom
       user_id: data.user_id,
       title: data.title,
       status: data.status,
-      screenshot_url: data.screenshot_url,
-      result_json: data.result_json,
+      screenshot_url: data.screenshot_url || undefined, // Convert null/empty to undefined
+      result_json: data.result_json || undefined,
       created_at: timestampToISO(data.created_at),
       updated_at: timestampToISO(data.updated_at),
     }
@@ -164,10 +226,42 @@ export async function updateAnalysis(
   try {
     checkFirestore()
     const analysisRef = doc(db!, "analyses", analysisId)
-    await updateDoc(analysisRef, {
-      ...updates,
+    
+    // Prepare update data, excluding undefined values
+    const updateData: any = {
       updated_at: serverTimestamp(),
-    })
+    }
+
+    if (updates.title !== undefined) updateData.title = updates.title
+    if (updates.status !== undefined) updateData.status = updates.status
+    if (updates.result_json !== undefined) updateData.result_json = updates.result_json
+    // Handle screenshot_url with extra care
+    if (updates.screenshot_url !== undefined) {
+      // Only include screenshot_url if it's a valid non-empty string
+      if (updates.screenshot_url === null) {
+        // Set to null to clear the field
+        updateData.screenshot_url = null
+      } else if (
+        typeof updates.screenshot_url === "string" &&
+        updates.screenshot_url.trim().length > 0
+      ) {
+        updateData.screenshot_url = updates.screenshot_url
+      }
+      // If it's undefined or empty string, don't include it at all
+    }
+
+    // Remove any undefined values as a final safety check
+    const cleanedUpdateData = removeUndefined(updateData)
+    
+    // Double-check: ensure no undefined values exist (defensive programming)
+    for (const key in cleanedUpdateData) {
+      if (cleanedUpdateData[key] === undefined) {
+        console.error(`ERROR: Found undefined value in field "${key}" before updateDoc. Removing it.`)
+        delete cleanedUpdateData[key]
+      }
+    }
+    
+    await updateDoc(analysisRef, cleanedUpdateData)
 
     return getAnalysisById(analysisId)
   } catch (error) {

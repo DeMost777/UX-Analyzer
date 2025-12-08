@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { useDropzone } from "react-dropzone"
 import { getCurrentUser } from "@/lib/firebase/auth"
 import { uploadScreenshot, getFileSizeMB } from "@/lib/firebase/storage"
-import { createAnalysis, incrementUsageStats, updateAnalysis } from "@/lib/firebase/firestore"
+import { createAnalysis, incrementUsageStats, updateAnalysis, getAnalysisById } from "@/lib/firebase/firestore"
 import type { Analysis } from "@/lib/db/types"
 
 interface AddAnalysisModalProps {
@@ -54,37 +54,44 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
         throw new Error("User not authenticated")
       }
 
-      // Create analysis record first
+      // Create analysis record first to get the analysis ID
       const analysis = await createAnalysis({
         user_id: currentUser.uid,
         title: title.trim(),
       })
 
-      // Upload screenshot to Firebase Storage
-      let screenshotUrl = preview || ""
+      // Upload screenshot to Firebase Storage (if file exists)
       if (file) {
-        screenshotUrl = await uploadScreenshot(file, currentUser.uid, analysis.analysis_id)
-        
-        // Update analysis with screenshot URL
-        await updateAnalysis(analysis.analysis_id, {
-          screenshot_url: screenshotUrl,
-        })
+        try {
+          const screenshotUrl = await uploadScreenshot(file, currentUser.uid, analysis.analysis_id)
+          
+          // Validate screenshot URL before updating
+          if (screenshotUrl && typeof screenshotUrl === "string" && screenshotUrl.trim().length > 0) {
+            // Update analysis with screenshot URL
+            await updateAnalysis(analysis.analysis_id, {
+              screenshot_url: screenshotUrl,
+            })
+          } else {
+            console.warn("Invalid screenshot URL received, skipping update:", screenshotUrl)
+          }
 
-        // Update usage stats
-        const fileSizeMB = getFileSizeMB(file)
-        await incrementUsageStats(currentUser.uid, "storage_used_mb", fileSizeMB)
+          // Update usage stats
+          const fileSizeMB = getFileSizeMB(file)
+          await incrementUsageStats(currentUser.uid, "storage_used_mb", fileSizeMB)
+
+          // Reload analysis to get updated data
+          const updated = await getAnalysisById(analysis.analysis_id)
+          if (updated) {
+            onAnalysisCreated(updated)
+            return
+          }
+        } catch (uploadError) {
+          console.error("Failed to upload screenshot:", uploadError)
+          // Continue with analysis even if upload fails
+        }
       }
 
-      // Update analysis with screenshot URL
-      const updatedAnalysis = await updateAnalysis(analysis.analysis_id, {
-        screenshot_url: screenshotUrl,
-      })
-
-      if (updatedAnalysis) {
-        onAnalysisCreated(updatedAnalysis)
-      } else {
-        onAnalysisCreated(analysis)
-      }
+      onAnalysisCreated(analysis)
     } catch (error: any) {
       console.error("Failed to create analysis:", error)
       alert(error.message || "Failed to create analysis. Please try again.")
