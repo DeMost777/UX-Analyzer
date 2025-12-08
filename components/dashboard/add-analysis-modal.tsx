@@ -9,7 +9,9 @@ import { useDropzone } from "react-dropzone"
 import { getCurrentUser } from "@/lib/firebase/auth"
 import { uploadScreenshot, getFileSizeMB } from "@/lib/firebase/storage"
 import { createAnalysis, incrementUsageStats, updateAnalysis, getAnalysisById } from "@/lib/firebase/firestore"
+import { analyzeScreenshot } from "@/lib/ux-analyzer"
 import type { Analysis } from "@/lib/db/types"
+import type { AnalysisResult } from "@/lib/types"
 
 interface AddAnalysisModalProps {
   onClose: () => void
@@ -79,18 +81,77 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
           const fileSizeMB = getFileSizeMB(file)
           await incrementUsageStats(currentUser.uid, "storage_used_mb", fileSizeMB)
 
-          // Reload analysis to get updated data
-          const updated = await getAnalysisById(analysis.analysis_id)
-          if (updated) {
-            onAnalysisCreated(updated)
-            return
+          // Run UX analysis on the screenshot
+          try {
+            // Get image dimensions
+            const imageDimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+              const img = new Image()
+              img.onload = () => {
+                resolve({ width: img.width, height: img.height })
+              }
+              img.onerror = () => {
+                resolve({ width: 0, height: 0 })
+              }
+              img.src = URL.createObjectURL(file)
+            })
+
+            const issues = await analyzeScreenshot(file, analysis.analysis_id)
+            
+            // Create analysis result object
+            const analysisResult: AnalysisResult = {
+              id: analysis.analysis_id,
+              createdAt: new Date(),
+              screenshots: [
+                {
+                  id: analysis.analysis_id,
+                  name: file.name,
+                  url: screenshotUrl,
+                  width: imageDimensions.width,
+                  height: imageDimensions.height,
+                },
+              ],
+              issues: issues,
+            }
+
+            // Update analysis with results
+            await updateAnalysis(analysis.analysis_id, {
+              status: "completed",
+              result_json: analysisResult,
+            })
+
+            // Increment AI requests usage stats
+            await incrementUsageStats(currentUser.uid, "ai_requests", 1)
+
+            // Reload analysis to get updated data
+            const updated = await getAnalysisById(analysis.analysis_id)
+            if (updated) {
+              onAnalysisCreated(updated)
+              return
+            }
+          } catch (analysisError) {
+            console.error("Failed to analyze screenshot:", analysisError)
+            // Update status to failed
+            await updateAnalysis(analysis.analysis_id, {
+              status: "failed",
+            })
+            // Still return the analysis so user can see it
+            const updated = await getAnalysisById(analysis.analysis_id)
+            if (updated) {
+              onAnalysisCreated(updated)
+              return
+            }
           }
         } catch (uploadError) {
           console.error("Failed to upload screenshot:", uploadError)
+          // Update status to failed
+          await updateAnalysis(analysis.analysis_id, {
+            status: "failed",
+          })
           // Continue with analysis even if upload fails
         }
       }
 
+      // If no file was uploaded, still return the analysis
       onAnalysisCreated(analysis)
     } catch (error: any) {
       console.error("Failed to create analysis:", error)
