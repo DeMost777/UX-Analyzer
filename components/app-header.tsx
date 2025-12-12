@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/theme-provider"
-import { Moon, Sun, Plus } from "lucide-react"
+import { Moon, Sun, Plus, ArrowLeft } from "lucide-react"
 import { Logo } from "@/components/logo"
 import type { AppScreen } from "@/components/flow-ux-app"
 
@@ -10,15 +10,21 @@ interface AppHeaderProps {
   currentScreen: AppScreen
   onNewAnalysis: () => void
   hasAnalysis: boolean
+  showBackButton?: boolean
 }
 
-export function AppHeader({ currentScreen, onNewAnalysis, hasAnalysis }: AppHeaderProps) {
+export function AppHeader({ currentScreen, onNewAnalysis, hasAnalysis, showBackButton }: AppHeaderProps) {
   const { theme, setTheme } = useTheme()
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
       <div className="flex h-14 items-center justify-between px-6">
         <div className="flex items-center gap-3">
+          {showBackButton && (
+            <Button variant="ghost" size="icon" onClick={onNewAnalysis} className="h-9 w-9">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
           <div className="flex items-center gap-2">
             <Logo className="h-8 w-8" />
             <span className="text-lg font-semibold tracking-tight">Flow UX AI</span>

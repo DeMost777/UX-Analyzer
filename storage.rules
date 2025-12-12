@@ -1,0 +1,61 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the path
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function to validate file type (images only)
+    function isValidImageType() {
+      return request.resource.contentType.matches('image/(png|jpeg|jpg|webp|gif)');
+    }
+    
+    // Helper function to validate file size (max 10MB)
+    function isValidFileSize() {
+      return request.resource.size < 10 * 1024 * 1024; // 10MB in bytes
+    }
+    
+    // ============================================
+    // ANALYSES SCREENSHOTS
+    // ============================================
+    // Path structure: analyses/{userId}/{analysisId}/{filename}
+    match /analyses/{userId}/{allPaths=**} {
+      // Users can read their own files
+      allow read: if isOwner(userId);
+      
+      // Users can upload files to their own directory
+      allow write: if isOwner(userId) &&
+        isValidImageType() &&
+        isValidFileSize();
+      
+      // Users can delete their own files
+      allow delete: if isOwner(userId);
+    }
+    
+    // ============================================
+    // USER AVATARS (optional, for future use)
+    // ============================================
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if true; // Avatars can be public
+      allow write: if isOwner(userId) &&
+        isValidImageType() &&
+        isValidFileSize();
+      allow delete: if isOwner(userId);
+    }
+    
+    // ============================================
+    // DEFAULT DENY
+    // ============================================
+    // Deny all other access by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -39,7 +39,6 @@ export function ReviewScreen({ analysisResult, onExport }: ReviewScreenProps) {
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 25, 200))
   const handleZoomOut = () => setZoom((z) => Math.max(z - 25, 50))
-  const handleZoomReset = () => setZoom(100)
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
@@ -80,7 +79,7 @@ export function ReviewScreen({ analysisResult, onExport }: ReviewScreenProps) {
         />
 
         {/* Zoom Controls */}
-        <ZoomControls zoom={zoom} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} onZoomReset={handleZoomReset} />
+        <ZoomControls zoom={zoom} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} onZoomReset={() => {}} />
 
         {/* Export Button */}
         <div className="absolute top-4 right-4">

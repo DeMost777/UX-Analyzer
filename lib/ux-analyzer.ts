@@ -18,8 +18,10 @@ interface AnalysisContext {
  */
 export async function analyzeScreenshot(file: File, screenshotId: string): Promise<UXIssue[]> {
   try {
+    console.log("Starting professional UX audit for:", file.name)
     // Use professional audit instead of basic mock analysis
     const auditResult = await performProfessionalAudit(file)
+    console.log("Professional audit completed, found", auditResult.issues.length, "issues")
 
     // Convert professional audit format to UXIssue format
     const issues: UXIssue[] = auditResult.issues.map((issue) => {
@@ -39,6 +41,7 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
         cause: getCauseFromType(issue.type, issue.description),
         fix: issue.recommendation,
         severity,
+        category: getCategoryFromType(issue.type),
         coordinates: { x: centerX, y: centerY },
       }
     })
@@ -52,15 +55,36 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
         cause: "The screen follows WCAG 2.2 AA standards and UX best practices",
         fix: "Continue following accessibility guidelines and consider user testing for edge cases",
         severity: "minor",
+        category: "visual",
         coordinates: { x: 0, y: 0 },
       })
     }
 
     return issues
-  } catch (error) {
-    console.error("Professional audit error, falling back to basic analysis:", error)
-    // Fallback to basic analysis if professional audit fails
-    return analyzeBasicFallback(file, screenshotId)
+  } catch (error: any) {
+    console.error("Professional audit error:", error)
+    console.error("Error details:", {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name
+    })
+    
+    // If it's a specific error we know about, throw it instead of falling back
+    if (error?.message?.includes("timeout") || 
+        error?.message?.includes("corrupted") || 
+        error?.message?.includes("Failed to process image")) {
+      throw error // Re-throw known errors so they're shown to the user
+    }
+    
+    // For unknown errors, try fallback but log the error
+    console.warn("Attempting fallback analysis due to error:", error?.message || "Unknown error")
+    try {
+      return await analyzeBasicFallback(file, screenshotId)
+    } catch (fallbackError: any) {
+      console.error("Fallback analysis also failed:", fallbackError)
+      // If fallback also fails, throw the original error
+      throw new Error(`Analysis failed: ${error?.message || "Unknown error"}. Fallback also failed: ${fallbackError?.message || "Unknown"}`)
+    }
   }
 }
 
@@ -78,6 +102,27 @@ function getCauseFromType(
     consistency: "Nielsen Heuristic #4: Inconsistent design patterns violate user expectations",
   }
   return causes[type] || description
+}
+
+function getCategoryFromType(
+  type: "contrast" | "spacing" | "alignment" | "hierarchy" | "accessibility" | "cognitive_load" | "consistency",
+): "visual" | "accessibility" | "logic" {
+  // Visual = spacing, alignment, hierarchy, consistency, cognitive_load (layout/visual structure)
+  // Accessibility = contrast, accessibility (WCAG issues)
+  // Logic = misleading labels, unclear indicators, ambiguous meaning, incorrect UX patterns
+  // Note: cognitive_load and consistency could be logic, but for now we'll classify them as visual
+  
+  if (type === "contrast" || type === "accessibility") {
+    return "accessibility"
+  }
+  
+  // Visual issues: spacing, alignment, hierarchy, consistency, cognitive_load
+  if (type === "spacing" || type === "alignment" || type === "hierarchy" || type === "consistency" || type === "cognitive_load") {
+    return "visual"
+  }
+  
+  // Default to visual for unknown types
+  return "visual"
 }
 
 // Fallback basic analysis if professional audit fails
@@ -99,15 +144,16 @@ async function analyzeBasicFallback(file: File, screenshotId: string): Promise<U
   issues.push(...contrastIssues, ...spacingIssues, ...touchTargetIssues, ...alignmentIssues, ...densityIssues)
 
   if (issues.length === 0) {
-    issues.push({
-      id: `${screenshotId}-no-issues`,
-      screenshotId,
-      problem: "No critical UX issues detected",
-      cause: "The screen follows basic UX principles",
-      fix: "Consider user testing to identify edge cases",
-      severity: "minor",
-      coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
-    })
+      issues.push({
+        id: `${screenshotId}-no-issues`,
+        screenshotId,
+        problem: "No critical UX issues detected",
+        cause: "The screen follows basic UX principles",
+        fix: "Consider user testing to identify edge cases",
+        severity: "minor",
+        category: "visual",
+        coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
+      })
   }
 
   return issues
@@ -178,6 +224,7 @@ function analyzeContrast(ctx: AnalysisContext, screenshotId: string): UXIssue[] 
         cause: `Contrast ratio is approximately ${contrast.toFixed(1)}:1, below WCAG AA requirement of 4.5:1`,
         fix: "Increase contrast between text and background colors to at least 4.5:1 for normal text",
         severity: contrast < 2 ? "critical" : "major",
+        category: "accessibility",
         coordinates: {
           x: Math.floor(region.x * scaleX + (region.size * scaleX) / 2),
           y: Math.floor(region.y * scaleY + (region.size * scaleY) / 2),
@@ -215,6 +262,7 @@ function analyzeSpacing(ctx: AnalysisContext, screenshotId: string): UXIssue[] {
         cause: "Spacing values vary significantly across the layout",
         fix: "Apply consistent spacing using an 8px grid system (8, 16, 24, 32px)",
         severity: "major",
+        category: "visual",
         coordinates: {
           x: Math.floor(first.x * scaleX),
           y: Math.floor(first.y * scaleY),
@@ -249,6 +297,7 @@ function analyzeTouchTargets(ctx: AnalysisContext, screenshotId: string): UXIssu
         cause: `Estimated size ${Math.round(targetWidth)}x${Math.round(targetHeight)}px is below 44x44px minimum`,
         fix: "Increase touch target to at least 44x44 pixels for better accessibility",
         severity: "major",
+        category: "accessibility",
         coordinates: {
           x: Math.floor(cluster.x * scaleX),
           y: Math.floor(cluster.y * scaleY),
@@ -283,6 +332,7 @@ function analyzeAlignment(ctx: AnalysisContext, screenshotId: string): UXIssue[]
       cause: "Content near center is offset by a few pixels",
       fix: "Use proper centering techniques (flexbox justify-center, margin auto)",
       severity: "minor",
+      category: "visual",
       coordinates: {
         x: Math.floor(first.x * scaleX),
         y: Math.floor(first.y * scaleY),
@@ -327,6 +377,7 @@ function analyzeContentDensity(ctx: AnalysisContext, screenshotId: string): UXIs
       cause: "Screen contains many elements competing for attention",
       fix: "Increase whitespace, group related elements, reduce cognitive load",
       severity: "major",
+      category: "visual",
       coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 3) },
     })
   }
@@ -533,6 +584,7 @@ function generateFallbackIssues(screenshotId: string, width: number, height: num
       cause: "Image format or loading prevented detailed analysis",
       fix: "Ensure image is a standard PNG or JPG format",
       severity: "minor",
+      category: "visual",
       coordinates: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
     },
   ]
