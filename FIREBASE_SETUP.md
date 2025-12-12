@@ -34,35 +34,18 @@ The UX Analyzer application now uses Firebase for:
 
 ## Step 4: Set Up Firestore Security Rules
 
-Go to **Firestore Database** → **Rules** and paste:
+Go to **Firestore Database** → **Rules** and copy the contents from `firestore.rules` file in this project.
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Users collection - users can read/write their own data
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Analyses collection - users can only access their own analyses
-    match /analyses/{analysisId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == resource.data.user_id;
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.user_id;
-    }
-    
-    // Usage stats - users can only access their own stats
-    match /usage_stats/{userId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == userId;
-    }
-  }
-}
-```
+The rules include:
+- ✅ User isolation (users can only access their own data)
+- ✅ Field validation (types, formats, constraints)
+- ✅ Authentication required for all operations
+- ✅ Immutable fields protection
+- ✅ Server timestamp enforcement
 
-Click **Publish** to save the rules.
+**Important:** Copy the entire contents of `firestore.rules` and paste into the Firebase Console rules editor, then click **Publish**.
+
+For detailed documentation, see `FIRESTORE_RULES.md`.
 
 ## Step 5: Set Up Firebase Storage
 
@@ -74,22 +57,17 @@ Click **Publish** to save the rules.
 
 ## Step 6: Set Up Storage Security Rules
 
-Go to **Storage** → **Rules** and paste:
+Go to **Storage** → **Rules** and copy the contents from `storage.rules` file in this project.
 
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    // Users can only upload/access their own files
-    match /analyses/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == userId;
-    }
-  }
-}
-```
+The rules include:
+- ✅ User isolation (users can only access their own files)
+- ✅ File type validation (images only: png, jpeg, jpg, webp, gif)
+- ✅ File size limits (max 10MB per file)
+- ✅ Authentication required for uploads/deletes
 
-Click **Publish** to save the rules.
+**Important:** Copy the entire contents of `storage.rules` and paste into the Firebase Console rules editor, then click **Publish**.
+
+For detailed documentation, see `STORAGE_RULES.md`.
 
 ## Step 7: Get Firebase Configuration
 

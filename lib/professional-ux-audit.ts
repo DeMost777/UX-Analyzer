@@ -34,14 +34,17 @@ interface AnalysisContext {
  * - Component consistency and interaction logic
  */
 export async function performProfessionalAudit(file: File): Promise<ProfessionalAuditResult> {
+  console.log("Starting professional UX audit for file:", file.name)
   const ctx = await getImageContext(file)
   if (!ctx) {
+    console.warn("Failed to get image context")
     return {
       issues: [],
       scores: { accessibility: 0, hierarchy: 0, consistency: 0, cognitive_load: 0 },
     }
   }
 
+  console.log("Image context loaded, dimensions:", ctx.width, "x", ctx.height)
   const issues: ProfessionalIssue[] = []
   let accessibilityScore = 100
   let hierarchyScore = 100

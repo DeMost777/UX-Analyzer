@@ -1,24 +1,171 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection - users can read/write their own data
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function to validate email format
+    function isValidEmail(email) {
+      return email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+    
+    // Helper function to validate URL format
+    function isValidUrl(url) {
+      return url.matches('^https?://.+');
+    }
+    
+    // Helper function to validate status
+    function isValidStatus(status) {
+      return status in ['processing', 'completed', 'failed'];
+    }
+    
+    // Helper function to check if value is a timestamp (serverTimestamp or actual timestamp)
+    function isTimestamp(value) {
+      return value is timestamp;
+    }
+    
+    // ============================================
+    // USERS COLLECTION
+    // ============================================
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Users can read their own data
+      allow read: if isOwner(userId);
+      
+      // Users can create their own document (during registration)
+      allow create: if isAuthenticated() && 
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasAll(['email']) &&
+        isValidEmail(request.resource.data.email) &&
+        request.resource.data.email is string &&
+        (!('name' in request.resource.data) || request.resource.data.name is string || request.resource.data.name == null) &&
+        (!('avatar_url' in request.resource.data) || request.resource.data.avatar_url is string || request.resource.data.avatar_url == null) &&
+        (!('created_at' in request.resource.data) || isTimestamp(request.resource.data.created_at)) &&
+        (!('last_login' in request.resource.data) || isTimestamp(request.resource.data.last_login));
+      
+      // Users can update their own data
+      allow update: if isOwner(userId) &&
+        // Email must be valid if provided and cannot be changed
+        (!('email' in request.resource.data) || 
+          (request.resource.data.email is string && 
+           isValidEmail(request.resource.data.email) &&
+           request.resource.data.email == resource.data.email)) &&
+        // Name must be string if provided
+        (!('name' in request.resource.data) || request.resource.data.name is string || request.resource.data.name == null) &&
+        // Avatar URL must be valid URL or null
+        (!('avatar_url' in request.resource.data) || request.resource.data.avatar_url is string || request.resource.data.avatar_url == null) &&
+        // Cannot modify created_at (if it exists, it must remain the same)
+        (!('created_at' in request.resource.data) || 
+          (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at)) &&
+        // last_login can be updated (it's a timestamp)
+        (!('last_login' in request.resource.data) || isTimestamp(request.resource.data.last_login));
+      
+      // Users cannot delete their own account (handle via admin function if needed)
+      allow delete: if false;
     }
     
-    // Analyses collection - users can only access their own analyses
+    // ============================================
+    // ANALYSES COLLECTION
+    // ============================================
     match /analyses/{analysisId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == resource.data.user_id;
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.user_id;
+      // Users can read their own analyses
+      allow read: if isAuthenticated() && 
+        resource.data.user_id == request.auth.uid;
+      
+      // Users can create analyses for themselves
+      allow create: if isAuthenticated() &&
+        request.resource.data.user_id == request.auth.uid &&
+        request.resource.data.keys().hasAll(['user_id', 'title', 'status']) &&
+        request.resource.data.user_id is string &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 200 &&
+        isValidStatus(request.resource.data.status) &&
+        (!('created_at' in request.resource.data) || isTimestamp(request.resource.data.created_at)) &&
+        (!('updated_at' in request.resource.data) || isTimestamp(request.resource.data.updated_at)) &&
+        // Optional screenshot_url must be valid URL
+        (!('screenshot_url' in request.resource.data) || 
+          request.resource.data.screenshot_url == null || 
+          (request.resource.data.screenshot_url is string && 
+           request.resource.data.screenshot_url.size() > 0 && 
+           isValidUrl(request.resource.data.screenshot_url))) &&
+        // Optional result_json must be a map/object
+        (!('result_json' in request.resource.data) || request.resource.data.result_json is map);
+      
+      // Users can update their own analyses
+      allow update: if isAuthenticated() &&
+        resource.data.user_id == request.auth.uid &&
+        // Cannot change user_id
+        request.resource.data.user_id == resource.data.user_id &&
+        // Title must be valid if provided
+        (!('title' in request.resource.data) || 
+          (request.resource.data.title is string && 
+           request.resource.data.title.size() > 0 && 
+           request.resource.data.title.size() <= 200)) &&
+        // Status must be valid if provided
+        (!('status' in request.resource.data) || isValidStatus(request.resource.data.status)) &&
+        // Screenshot URL must be valid if provided
+        (!('screenshot_url' in request.resource.data) || 
+          request.resource.data.screenshot_url == null || 
+          (request.resource.data.screenshot_url is string && 
+           request.resource.data.screenshot_url.size() > 0 && 
+           isValidUrl(request.resource.data.screenshot_url))) &&
+        // Result JSON must be a map/object if provided
+        (!('result_json' in request.resource.data) || request.resource.data.result_json is map) &&
+        // Updated_at must be a timestamp if provided
+        (!('updated_at' in request.resource.data) || isTimestamp(request.resource.data.updated_at)) &&
+        // Cannot modify created_at (if it exists, it must remain the same)
+        (!('created_at' in request.resource.data) || 
+          (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at));
+      
+      // Users can delete their own analyses
+      allow delete: if isAuthenticated() &&
+        resource.data.user_id == request.auth.uid;
     }
     
-    // Usage stats - users can only access their own stats
+    // ============================================
+    // USAGE STATS COLLECTION
+    // ============================================
     match /usage_stats/{userId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == userId;
+      // Users can read their own stats
+      allow read: if isOwner(userId);
+      
+      // Users can create their own stats document
+      allow create: if isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasAll(['user_id']) &&
+        request.resource.data.user_id == userId &&
+        (!('analyses_run' in request.resource.data) || 
+          (request.resource.data.analyses_run is int && request.resource.data.analyses_run >= 0)) &&
+        (!('storage_used_mb' in request.resource.data) || 
+          (request.resource.data.storage_used_mb is number && request.resource.data.storage_used_mb >= 0)) &&
+        (!('ai_requests' in request.resource.data) || 
+          (request.resource.data.ai_requests is int && request.resource.data.ai_requests >= 0)) &&
+        (!('updated_at' in request.resource.data) || isTimestamp(request.resource.data.updated_at));
+      
+      // Users can update their own stats
+      allow update: if isOwner(userId) &&
+        // Cannot change user_id
+        request.resource.data.user_id == resource.data.user_id &&
+        // All numeric fields must be non-negative
+        (!('analyses_run' in request.resource.data) || 
+          (request.resource.data.analyses_run is int && request.resource.data.analyses_run >= 0)) &&
+        (!('storage_used_mb' in request.resource.data) || 
+          (request.resource.data.storage_used_mb is number && request.resource.data.storage_used_mb >= 0)) &&
+        (!('ai_requests' in request.resource.data) || 
+          (request.resource.data.ai_requests is int && request.resource.data.ai_requests >= 0)) &&
+        // Updated_at must be a timestamp if provided
+        (!('updated_at' in request.resource.data) || isTimestamp(request.resource.data.updated_at));
+      
+      // Users cannot delete their stats (handle via admin function if needed)
+      allow delete: if false;
     }
   }
 }
-
