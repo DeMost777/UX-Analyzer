@@ -34,14 +34,19 @@ interface AnalysisContext {
  * - Component consistency and interaction logic
  */
 export async function performProfessionalAudit(file: File): Promise<ProfessionalAuditResult> {
-  console.log("Starting professional UX audit for file:", file.name)
-  const ctx = await getImageContext(file)
-  if (!ctx) {
-    console.warn("Failed to get image context")
-    return {
-      issues: [],
-      scores: { accessibility: 0, hierarchy: 0, consistency: 0, cognitive_load: 0 },
+  console.log("Starting professional UX audit for file:", file.name, "Size:", file.size)
+  
+  let ctx: AnalysisContext | null = null
+  try {
+    ctx = await getImageContext(file)
+    if (!ctx) {
+      console.error("Failed to get image context: returned null")
+      throw new Error("Failed to process image. The file may be corrupted or in an unsupported format.")
     }
+    console.log("Image context loaded successfully, dimensions:", ctx.width, "x", ctx.height)
+  } catch (error: any) {
+    console.error("Error getting image context:", error)
+    throw new Error(error.message || "Failed to process image for analysis")
   }
 
   console.log("Image context loaded, dimensions:", ctx.width, "x", ctx.height)
@@ -381,15 +386,31 @@ function analyzeAlignment(ctx: AnalysisContext): ProfessionalIssue[] {
 
 // Helper functions (reuse from existing analyzer)
 async function getImageContext(file: File): Promise<AnalysisContext | null> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = "anonymous"
+    
+    // Add timeout for image loading
+    const timeoutId = setTimeout(() => {
+      URL.revokeObjectURL(img.src)
+      reject(new Error("Image loading timeout. The file may be too large or corrupted."))
+    }, 15000) // 15 second timeout
+    
     img.onload = () => {
+      clearTimeout(timeoutId)
       try {
         const canvas = document.createElement("canvas")
         const ctx = canvas.getContext("2d")
         if (!ctx) {
-          resolve(null)
+          URL.revokeObjectURL(img.src)
+          reject(new Error("Failed to get canvas context. Browser may not support canvas operations."))
+          return
+        }
+
+        // Validate image dimensions
+        if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+          URL.revokeObjectURL(img.src)
+          reject(new Error("Invalid image dimensions. The image may be corrupted."))
           return
         }
 
@@ -398,21 +419,51 @@ async function getImageContext(file: File): Promise<AnalysisContext | null> {
         canvas.width = img.width * scale
         canvas.height = img.height * scale
 
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        try {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-        resolve({
-          imageData,
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-        })
-      } catch {
-        resolve(null)
+          // Validate image data
+          if (!imageData || imageData.data.length === 0) {
+            URL.revokeObjectURL(img.src)
+            reject(new Error("Failed to extract image data. The image may be corrupted or unsupported."))
+            return
+          }
+
+          resolve({
+            imageData,
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+          })
+        } catch (drawError: any) {
+          URL.revokeObjectURL(img.src)
+          const errorMessage = drawError.message || "Failed to process image"
+          // Check for CORS or security errors
+          if (errorMessage.includes("tainted") || errorMessage.includes("CORS")) {
+            reject(new Error("Image security error. Please ensure the image is from a trusted source."))
+          } else {
+            reject(new Error(`Image processing error: ${errorMessage}`))
+          }
+        }
+      } catch (error: any) {
+        URL.revokeObjectURL(img.src)
+        reject(new Error(`Failed to process image: ${error.message || "Unknown error"}`))
       }
-      URL.revokeObjectURL(img.src)
     }
-    img.onerror = () => resolve(null)
-    img.src = URL.createObjectURL(file)
+    
+    img.onerror = (e) => {
+      clearTimeout(timeoutId)
+      URL.revokeObjectURL(img.src)
+      reject(new Error("Failed to load image. The file may be corrupted or in an unsupported format."))
+    }
+    
+    try {
+      const objectUrl = URL.createObjectURL(file)
+      img.src = objectUrl
+    } catch (error: any) {
+      clearTimeout(timeoutId)
+      reject(new Error(`Failed to create object URL: ${error.message || "Unknown error"}`))
+    }
   })
 }
 

@@ -49,6 +49,9 @@ For detailed documentation, see `FIRESTORE_RULES.md`.
 
 ## Step 5: Set Up Firebase Storage
 
+For detailed step-by-step instructions, see **[FIREBASE_STORAGE_SETUP.md](./FIREBASE_STORAGE_SETUP.md)**.
+
+Quick setup:
 1. Go to **Storage**
 2. Click "Get started"
 3. Choose **Production mode**
@@ -67,7 +70,9 @@ The rules include:
 
 **Important:** Copy the entire contents of `storage.rules` and paste into the Firebase Console rules editor, then click **Publish**.
 
-For detailed documentation, see `STORAGE_RULES.md`.
+For detailed documentation, see:
+- **[FIREBASE_STORAGE_SETUP.md](./FIREBASE_STORAGE_SETUP.md)** - Complete setup guide
+- **[STORAGE_RULES.md](./STORAGE_RULES.md)** - Security rules documentation
 
 ## Step 7: Get Firebase Configuration
 

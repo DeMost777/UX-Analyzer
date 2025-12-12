@@ -18,8 +18,10 @@ interface AnalysisContext {
  */
 export async function analyzeScreenshot(file: File, screenshotId: string): Promise<UXIssue[]> {
   try {
+    console.log("Starting professional UX audit for:", file.name)
     // Use professional audit instead of basic mock analysis
     const auditResult = await performProfessionalAudit(file)
+    console.log("Professional audit completed, found", auditResult.issues.length, "issues")
 
     // Convert professional audit format to UXIssue format
     const issues: UXIssue[] = auditResult.issues.map((issue) => {
@@ -59,10 +61,30 @@ export async function analyzeScreenshot(file: File, screenshotId: string): Promi
     }
 
     return issues
-  } catch (error) {
-    console.error("Professional audit error, falling back to basic analysis:", error)
-    // Fallback to basic analysis if professional audit fails
-    return analyzeBasicFallback(file, screenshotId)
+  } catch (error: any) {
+    console.error("Professional audit error:", error)
+    console.error("Error details:", {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name
+    })
+    
+    // If it's a specific error we know about, throw it instead of falling back
+    if (error?.message?.includes("timeout") || 
+        error?.message?.includes("corrupted") || 
+        error?.message?.includes("Failed to process image")) {
+      throw error // Re-throw known errors so they're shown to the user
+    }
+    
+    // For unknown errors, try fallback but log the error
+    console.warn("Attempting fallback analysis due to error:", error?.message || "Unknown error")
+    try {
+      return await analyzeBasicFallback(file, screenshotId)
+    } catch (fallbackError: any) {
+      console.error("Fallback analysis also failed:", fallbackError)
+      // If fallback also fails, throw the original error
+      throw new Error(`Analysis failed: ${error?.message || "Unknown error"}. Fallback also failed: ${fallbackError?.message || "Unknown"}`)
+    }
   }
 }
 
