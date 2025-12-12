@@ -127,9 +127,11 @@ export async function checkStorageRules() {
   console.log("   3. Use Rules Playground to test\n")
 }
 
-// Browser console helper
+// Browser console helper - only in browser environment
+// This code runs only in the browser, not during SSR/build
 if (typeof window !== "undefined") {
-  (window as any).verifyStorageSetup = verifyStorageSetup
-  (window as any).testFileUpload = testFileUpload
-  (window as any).checkStorageRules = checkStorageRules
+  const win = window as any
+  win.verifyStorageSetup = verifyStorageSetup
+  win.testFileUpload = testFileUpload
+  win.checkStorageRules = checkStorageRules
 }
