@@ -22,7 +22,7 @@ export interface Screenshot {
   
   export interface AnalysisResult {
     id: string
-    createdAt: Date
+    createdAt: Date | string // Accept both Date and ISO string for Firestore compatibility
     screenshots: Screenshot[]
     issues: UXIssue[]
   }

@@ -111,7 +111,34 @@ function FlowUXAppWithAnalysis({
   onBackToDashboard: () => void
 }) {
   // Convert saved analysis to AnalysisResult format
-  const analysisResult: AnalysisResult | null = analysis.result_json || null
+  // Normalize the result_json to ensure createdAt is properly formatted
+  const rawResult = analysis.result_json
+  let analysisResult: AnalysisResult | null = null
+  
+  if (rawResult) {
+    analysisResult = {
+      ...rawResult,
+      // Ensure createdAt is a valid date string
+      createdAt: (() => {
+        try {
+          if (rawResult.createdAt instanceof Date) {
+            return rawResult.createdAt.toISOString()
+          }
+          if (typeof rawResult.createdAt === 'string') {
+            // Validate it's a valid date string
+            const date = new Date(rawResult.createdAt)
+            if (!isNaN(date.getTime())) {
+              return rawResult.createdAt
+            }
+          }
+          // Fallback to current date
+          return new Date().toISOString()
+        } catch {
+          return new Date().toISOString()
+        }
+      })(),
+    } as AnalysisResult
+  }
 
   if (!analysisResult) {
     return (

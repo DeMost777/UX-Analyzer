@@ -214,9 +214,10 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
             console.log("UX analysis completed, found", issues.length, "issues")
             
             // Create analysis result object
+            // Use ISO string for createdAt to avoid date parsing issues
             const analysisResult: AnalysisResult = {
               id: analysis.analysis_id,
-              createdAt: new Date(),
+              createdAt: new Date().toISOString() as any, // Store as ISO string for Firestore compatibility
               screenshots: [
                 {
                   id: analysis.analysis_id,

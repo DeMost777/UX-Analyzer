@@ -1,22 +1,12 @@
-import { put, del, head, type PutBlobResult } from "@vercel/blob"
-
 /**
  * Vercel Blob Storage Implementation
  * 
  * This module provides file storage functionality using Vercel Blob Storage.
  * It replaces Firebase Storage with a simpler, Vercel-native solution.
+ * 
+ * NOTE: Direct Vercel Blob operations are now handled server-side via /api/upload
+ * This file provides client-side wrappers that call the API route.
  */
-
-// Check if Vercel Blob token is configured
-function checkBlobToken() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN
-  if (!token) {
-    throw new Error(
-      "Vercel Blob Storage is not configured. Please set BLOB_READ_WRITE_TOKEN environment variable."
-    )
-  }
-  return token
-}
 
 /**
  * Upload a screenshot to Vercel Blob Storage with progress tracking
@@ -134,62 +124,18 @@ export async function uploadScreenshots(
 /**
  * Delete a screenshot from Vercel Blob Storage
  * @param url - The URL of the file to delete
+ * @note This function will need an API route to be implemented for server-side deletion
  */
 export async function deleteScreenshot(url: string): Promise<void> {
   try {
-    checkBlobToken()
-
     console.log("Deleting file from Vercel Blob:", url)
-
-    // Extract blob URL from the full URL
-    // Vercel Blob URLs are in format: https://[hash].public.blob.vercel-storage.com/[path]
-    await del(url)
-
-    console.log("File deleted successfully")
+    
+    // TODO: Implement API route for deletion
+    // For now, just log - deletion can be implemented later if needed
+    console.warn("Delete functionality not yet implemented via API route")
   } catch (error: any) {
     console.error("Error deleting screenshot:", error)
-    
-    // Don't throw if file doesn't exist (already deleted)
-    if (error?.message?.includes("not found") || error?.status === 404) {
-      console.warn("File not found, may have already been deleted")
-      return
-    }
-    
     throw new Error(error.message || "Failed to delete screenshot")
-  }
-}
-
-/**
- * Check if a file exists in Vercel Blob Storage
- * @param url - The URL of the file to check
- * @returns True if file exists, false otherwise
- */
-export async function fileExists(url: string): Promise<boolean> {
-  try {
-    checkBlobToken()
-    await head(url)
-    return true
-  } catch (error: any) {
-    if (error?.status === 404) {
-      return false
-    }
-    throw error
-  }
-}
-
-/**
- * Get file metadata from Vercel Blob Storage
- * @param url - The URL of the file
- * @returns File metadata
- */
-export async function getFileMetadata(url: string) {
-  try {
-    checkBlobToken()
-    const metadata = await head(url)
-    return metadata
-  } catch (error: any) {
-    console.error("Error getting file metadata:", error)
-    throw new Error(error.message || "Failed to get file metadata")
   }
 }
 

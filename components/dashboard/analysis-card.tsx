@@ -97,7 +97,17 @@ export function AnalysisCard({ analysis, onView, onDelete, onRename }: AnalysisC
           <span className="capitalize">{analysis.status}</span>
         </div>
         <span className="text-xs text-gray-400">
-          {formatDistanceToNow(new Date(analysis.created_at), { addSuffix: true })}
+          {(() => {
+            try {
+              const date = analysis.created_at ? new Date(analysis.created_at) : new Date()
+              if (isNaN(date.getTime())) {
+                return "Recently"
+              }
+              return formatDistanceToNow(date, { addSuffix: true })
+            } catch {
+              return "Recently"
+            }
+          })()}
         </span>
       </div>
 

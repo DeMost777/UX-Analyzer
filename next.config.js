@@ -4,6 +4,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Ensure @vercel/blob is treated as external for server components
+  serverExternalPackages: ['@vercel/blob'],
 }
 
 module.exports = nextConfig

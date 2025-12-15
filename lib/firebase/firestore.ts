@@ -63,6 +63,35 @@ function timestampToISO(timestamp: any): string {
   return timestamp || new Date().toISOString()
 }
 
+// Normalize AnalysisResult to ensure createdAt is always a valid ISO string
+function normalizeAnalysisResult(result: any): any {
+  if (!result || typeof result !== 'object') {
+    return result
+  }
+  
+  // Normalize createdAt field
+  if (result.createdAt !== undefined) {
+    try {
+      if (result.createdAt instanceof Date) {
+        result.createdAt = result.createdAt.toISOString()
+      } else if (typeof result.createdAt === 'string') {
+        // Validate it's a valid date string
+        const date = new Date(result.createdAt)
+        if (isNaN(date.getTime())) {
+          result.createdAt = new Date().toISOString()
+        }
+      } else {
+        // Invalid date, use current date
+        result.createdAt = new Date().toISOString()
+      }
+    } catch {
+      result.createdAt = new Date().toISOString()
+    }
+  }
+  
+  return result
+}
+
 // User operations
 export async function createUserDocument(uid: string, email: string, name?: string, avatarUrl?: string) {
   checkFirestore()
@@ -169,7 +198,7 @@ export async function getAnalysisById(analysisId: string): Promise<Analysis | nu
     title: data.title,
     status: data.status,
     screenshot_url: data.screenshot_url || undefined, // Convert null/empty to undefined for TypeScript
-    result_json: data.result_json || undefined,
+    result_json: data.result_json ? normalizeAnalysisResult(data.result_json) : undefined,
     created_at: timestampToISO(data.created_at),
     updated_at: timestampToISO(data.updated_at),
   }
@@ -193,7 +222,7 @@ export async function getAnalysesByUserId(userId: string, maxResults = 50): Prom
       title: data.title,
       status: data.status,
       screenshot_url: data.screenshot_url || undefined, // Convert null/empty to undefined
-      result_json: data.result_json || undefined,
+      result_json: data.result_json ? normalizeAnalysisResult(data.result_json) : undefined,
       created_at: timestampToISO(data.created_at),
       updated_at: timestampToISO(data.updated_at),
     }
