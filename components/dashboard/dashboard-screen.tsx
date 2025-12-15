@@ -31,6 +31,7 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [showAddModal, setShowAddModal] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     loadAnalyses()
@@ -63,6 +64,7 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
 
   const loadAnalyses = async () => {
     try {
+      setLoadError(null)
       const currentUser = getCurrentUser()
       if (!currentUser) {
         setLoading(false)
@@ -72,15 +74,38 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
       const userAnalyses = await getAnalysesByUserId(currentUser.uid)
       setAnalyses(userAnalyses)
       setFilteredAnalyses(userAnalyses)
-    } catch (error) {
+      
+      // Clear error if we successfully loaded analyses
+      if (userAnalyses.length > 0) {
+        setLoadError(null)
+      }
+    } catch (error: any) {
       console.error("Failed to load analyses:", error)
+      // Check if it's the index error
+      if (error?.message?.includes("index") || error?.code === "failed-precondition") {
+        setLoadError("Firestore index required. Please create the index using the link in the console.")
+      } else {
+        setLoadError("Failed to load analyses. Please try refreshing the page.")
+      }
+      // Don't clear analyses on error - keep existing ones if any
     } finally {
       setLoading(false)
     }
   }
 
   const handleAnalysisCreated = async (analysis: Analysis) => {
-    setAnalyses([analysis, ...analyses])
+    const updatedAnalyses = [analysis, ...analyses]
+    setAnalyses(updatedAnalyses)
+    // Update filtered analyses based on current search query
+    if (searchQuery.trim() === "") {
+      setFilteredAnalyses(updatedAnalyses)
+    } else {
+      // Re-run search with new analysis included
+      const query = searchQuery.toLowerCase()
+      setFilteredAnalyses(
+        updatedAnalyses.filter((a) => a.title.toLowerCase().includes(query) || a.status.toLowerCase().includes(query))
+      )
+    }
     setShowAddModal(false)
   }
 
@@ -145,14 +170,27 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
         {/* Usage Stats Widget */}
         <UsageStatsWidget />
 
+        {/* Error Message */}
+        {loadError && (
+          <div className="mt-8 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
+            <p className="text-sm text-yellow-400">{loadError}</p>
+            <button
+              onClick={loadAnalyses}
+              className="mt-2 text-sm text-yellow-300 hover:text-yellow-200 underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Analyses Grid */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-gray-400">Loading...</div>
           </div>
-        ) : filteredAnalyses.length === 0 ? (
+        ) : filteredAnalyses.length === 0 && !loadError ? (
           <EmptyState onAddNew={() => setShowAddModal(true)} hasSearched={searchQuery.trim() !== ""} />
-        ) : (
+        ) : filteredAnalyses.length > 0 ? (
           <div className="mt-8">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">
@@ -171,7 +209,7 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
               ))}
             </div>
           </div>
-        )}
+        ) : null}
       </main>
 
       {/* Add Analysis Modal */}

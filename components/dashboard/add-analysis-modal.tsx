@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useDropzone } from "react-dropzone"
 import { getCurrentUser } from "@/lib/firebase/auth"
-import { uploadScreenshot, getFileSizeMB } from "@/lib/firebase/storage"
+import { uploadScreenshot, uploadScreenshots, getFileSizeMB } from "@/lib/firebase/storage"
 import { createAnalysis, incrementUsageStats, updateAnalysis, getAnalysisById } from "@/lib/firebase/firestore"
 import { analyzeScreenshot } from "@/lib/ux-analyzer"
 import type { Analysis } from "@/lib/db/types"
@@ -20,36 +20,69 @@ interface AddAnalysisModalProps {
 
 export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModalProps) {
   const [title, setTitle] = useState("")
-  const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [files, setFiles] = useState<File[]>([])
+  const [previews, setPreviews] = useState<Array<{ file: File; url: string }>>([])
   const [uploading, setUploading] = useState(false)
   const [status, setStatus] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const file = acceptedFiles[0]
-    if (file) {
-      setFile(file)
+    const validFiles: File[] = []
+
+    // First, validate all files
+    acceptedFiles.forEach((file) => {
+      // Validate file size
+      if (file.size > 10 * 1024 * 1024) {
+        console.warn(`File ${file.name} exceeds 10MB limit, skipping`)
+        return
+      }
+
+      // Validate file type
+      const validImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
+      if (!validImageTypes.includes(file.type)) {
+        console.warn(`File ${file.name} has invalid type: ${file.type}, skipping`)
+        return
+      }
+
+      validFiles.push(file)
+    })
+
+    // Update files state immediately
+    setFiles((prev) => [...prev, ...validFiles])
+
+    // Load previews for all valid files
+    validFiles.forEach((file) => {
       const reader = new FileReader()
       reader.onload = () => {
-        setPreview(reader.result as string)
+        setPreviews((prev) => [
+          ...prev,
+          {
+            file,
+            url: reader.result as string,
+          },
+        ])
       }
       reader.readAsDataURL(file)
-    }
+    })
   }, [])
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+    setPreviews((prev) => prev.filter((_, i) => i !== index))
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "image/*": [".png", ".jpg", ".jpeg", ".webp"],
     },
-    maxFiles: 1,
+    multiple: true,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file || !title.trim()) return
+    if (files.length === 0 || !title.trim()) return
 
     setUploading(true)
     setStatus("Creating analysis...")
@@ -62,14 +95,15 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
         throw new Error("User not authenticated. Please log in and try again.")
       }
 
-      // Validate file before proceeding
-      if (file.size > 10 * 1024 * 1024) {
-        throw new Error("File size exceeds 10MB limit. Please use a smaller image.")
-      }
-
+      // Validate all files before proceeding
       const validImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
-      if (!validImageTypes.includes(file.type)) {
-        throw new Error(`Invalid file type: ${file.type}. Please upload a PNG, JPEG, WEBP, or GIF image.`)
+      for (const file of files) {
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error(`File "${file.name}" exceeds 10MB limit. Please use smaller images.`)
+        }
+        if (!validImageTypes.includes(file.type)) {
+          throw new Error(`File "${file.name}" has invalid type: ${file.type}. Please upload PNG, JPEG, WEBP, or GIF images.`)
+        }
       }
 
       // Create analysis record first to get the analysis ID
@@ -84,47 +118,42 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
         throw new Error(`Failed to create analysis: ${createError.message || "Unknown error"}`)
       }
 
-      // Upload screenshot to Firebase Storage (if file exists)
-      if (file) {
-        let screenshotUrl: string | null = null
+      // Upload screenshots to Vercel Blob Storage
+      if (files.length > 0) {
+        let screenshotUrls: string[] = []
         
         try {
-          setStatus("Uploading screenshot...")
+          setStatus(`Uploading ${files.length} screenshot${files.length > 1 ? 's' : ''}...`)
           setUploadProgress(0)
-          console.log("Starting upload for file:", file.name, "Size:", file.size)
+          console.log(`Starting upload for ${files.length} file(s)`)
           
-          // Upload with progress tracking
-          screenshotUrl = await uploadScreenshot(
-            file, 
+          // Upload all files
+          screenshotUrls = await uploadScreenshots(
+            files, 
             currentUser.uid, 
-            analysis.analysis_id,
-            (progress) => {
-              setUploadProgress(progress)
-              if (progress < 100) {
-                setStatus(`Uploading screenshot... ${progress}%`)
-              } else {
-                setStatus("Upload complete, processing...")
-              }
-            }
+            analysis.analysis_id
           )
-          setUploadProgress(100)
-          console.log("Upload completed, URL:", screenshotUrl)
           
-          // Validate screenshot URL before updating
-          if (screenshotUrl && typeof screenshotUrl === "string" && screenshotUrl.trim().length > 0) {
-            // Update analysis with screenshot URL
-            await updateAnalysis(analysis.analysis_id, {
-              screenshot_url: screenshotUrl,
-            })
-          } else {
-            throw new Error("Invalid screenshot URL received from upload")
+          // Track progress
+          setUploadProgress(50)
+          setStatus("Upload complete, processing...")
+          console.log("Upload completed, URLs:", screenshotUrls)
+          
+          // Validate screenshot URLs
+          if (screenshotUrls.length === 0 || !screenshotUrls.every(url => url && typeof url === "string" && url.trim().length > 0)) {
+            throw new Error("Invalid screenshot URLs received from upload")
           }
 
-          // Update usage stats
-          const fileSizeMB = getFileSizeMB(file)
-          await incrementUsageStats(currentUser.uid, "storage_used_mb", fileSizeMB)
+          // Update analysis with first screenshot URL (for thumbnail)
+          await updateAnalysis(analysis.analysis_id, {
+            screenshot_url: screenshotUrls[0],
+          })
+
+          // Update usage stats for all files
+          const totalSizeMB = files.reduce((sum, file) => sum + getFileSizeMB(file), 0)
+          await incrementUsageStats(currentUser.uid, "storage_used_mb", totalSizeMB)
         } catch (uploadError: any) {
-          console.error("Failed to upload screenshot:", uploadError)
+          console.error("Failed to upload screenshots:", uploadError)
           const errorMessage = uploadError.message || "Unknown upload error"
           setError(`Upload failed: ${errorMessage}`)
           setStatus(`Upload error: ${errorMessage}`)
@@ -143,91 +172,97 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
           return
         }
 
-        // Run UX analysis on the screenshot
+        // Run UX analysis on all screenshots
         try {
-          setStatus("Preparing image for analysis...")
+          setStatus("Preparing images for analysis...")
           
-          // Get image dimensions with timeout
-          const imageDimensions = await Promise.race([
-            new Promise<{ width: number; height: number }>((resolve, reject) => {
-              const img = new Image()
-              const objectUrl = URL.createObjectURL(file)
-              
-              const cleanup = () => {
-                URL.revokeObjectURL(objectUrl)
-              }
-              
-              img.onload = () => {
-                if (img.width === 0 || img.height === 0) {
-                  cleanup()
-                  reject(new Error("Invalid image dimensions"))
-                  return
+          // Get image dimensions for all files
+          const imageDimensionsPromises = files.map((file) =>
+            Promise.race([
+              new Promise<{ file: File; width: number; height: number }>((resolve, reject) => {
+                const img = new Image()
+                const objectUrl = URL.createObjectURL(file)
+                
+                const cleanup = () => {
+                  URL.revokeObjectURL(objectUrl)
                 }
-                resolve({ width: img.width, height: img.height })
-                cleanup()
-              }
-              
-              img.onerror = (e) => {
-                cleanup()
-                reject(new Error("Failed to load image. The file may be corrupted."))
-              }
-              
-              img.src = objectUrl
-            }),
-            new Promise<never>((_, reject) => {
-              setTimeout(() => {
-                reject(new Error("Image loading timeout. The file may be too large or corrupted."))
-              }, 10000) // 10 second timeout for image loading
-            })
-          ])
+                
+                img.onload = () => {
+                  if (img.width === 0 || img.height === 0) {
+                    cleanup()
+                    reject(new Error(`Invalid image dimensions for ${file.name}`))
+                    return
+                  }
+                  resolve({ file, width: img.width, height: img.height })
+                  cleanup()
+                }
+                
+                img.onerror = () => {
+                  cleanup()
+                  reject(new Error(`Failed to load image: ${file.name}. The file may be corrupted.`))
+                }
+                
+                img.src = objectUrl
+              }),
+              new Promise<never>((_, reject) => {
+                setTimeout(() => {
+                  reject(new Error(`Image loading timeout for ${file.name}. The file may be too large or corrupted.`))
+                }, 10000) // 10 second timeout for image loading
+              })
+            ])
+          )
 
-          if (imageDimensions.width === 0 || imageDimensions.height === 0) {
-            throw new Error("Invalid image dimensions. Please use a valid image file.")
-          }
+          const imageDimensions = await Promise.all(imageDimensionsPromises)
 
-          setStatus("Running UX analysis... (this may take 30-60 seconds)")
+          setStatus(`Running UX analysis on ${files.length} screenshot${files.length > 1 ? 's' : ''}... (this may take 30-90 seconds)`)
           console.log("Starting UX analysis for analysis:", analysis.analysis_id)
           
           // Add progress updates during analysis
           const progressInterval = setInterval(() => {
             setStatus((prev) => {
               if (prev.includes("Running UX analysis")) {
-                return "Running UX analysis... (still processing, please wait)"
+                return `Running UX analysis... (still processing ${files.length} screenshot${files.length > 1 ? 's' : ''}, please wait)`
               }
               return prev
             })
           }, 15000) // Update every 15 seconds
           
           try {
-            // Add timeout to prevent hanging indefinitely
-            const analysisPromise = analyzeScreenshot(file, analysis.analysis_id)
+            // Analyze all screenshots
+            const analysisPromises = files.map((file, index) => 
+              analyzeScreenshot(file, `${analysis.analysis_id}-${index}`)
+            )
+            
+            // Add timeout to prevent hanging indefinitely (90 seconds per file, but we'll use a reasonable total)
+            const totalTimeout = Math.min(90000 * files.length, 300000) // Max 5 minutes total
             const timeoutPromise = new Promise<never>((_, reject) => {
               setTimeout(() => {
-                console.error("Analysis timeout after 90 seconds")
-                reject(new Error("Analysis timed out after 90 seconds. The image may be too complex. Please try with a simpler image."))
-              }, 90000) // Increased to 90 seconds
+                console.error("Analysis timeout")
+                reject(new Error(`Analysis timed out after ${Math.floor(totalTimeout / 1000)} seconds. The images may be too complex. Please try with simpler images.`))
+              }, totalTimeout)
             })
             
-            const issues = await Promise.race([analysisPromise, timeoutPromise])
+            const allIssues = await Promise.race([
+              Promise.all(analysisPromises),
+              timeoutPromise
+            ])
             clearInterval(progressInterval)
             
-            console.log("UX analysis completed, found", issues.length, "issues")
+            const totalIssues = (allIssues as any[]).flat()
+            console.log("UX analysis completed, found", totalIssues.length, "issues across", files.length, "screenshots")
             
-            // Create analysis result object
-            // Use ISO string for createdAt to avoid date parsing issues
+            // Create analysis result object with all screenshots
             const analysisResult: AnalysisResult = {
               id: analysis.analysis_id,
               createdAt: new Date().toISOString() as any, // Store as ISO string for Firestore compatibility
-              screenshots: [
-                {
-                  id: analysis.analysis_id,
-                  name: file.name,
-                  url: screenshotUrl!,
-                  width: imageDimensions.width,
-                  height: imageDimensions.height,
-                },
-              ],
-              issues: issues,
+              screenshots: imageDimensions.map((dim, index) => ({
+                id: `${analysis.analysis_id}-${index}`,
+                name: dim.file.name,
+                url: screenshotUrls[index],
+                width: dim.width,
+                height: dim.height,
+              })),
+              issues: totalIssues,
             }
 
             setStatus("Saving results...")
@@ -238,8 +273,8 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
               result_json: analysisResult,
             })
 
-            // Increment AI requests usage stats
-            await incrementUsageStats(currentUser.uid, "ai_requests", 1)
+            // Increment AI requests usage stats (one per file analyzed)
+            await incrementUsageStats(currentUser.uid, "ai_requests", files.length)
 
             // Reload analysis to get updated data
             const updated = await getAnalysisById(analysis.analysis_id)
@@ -346,7 +381,7 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
           </div>
 
           <div>
-            <Label className="text-gray-300">Screenshot</Label>
+            <Label className="text-gray-300">Screenshots</Label>
             <div
               {...getRootProps()}
               className={`mt-2 cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
@@ -356,18 +391,41 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
               }`}
             >
               <input {...getInputProps()} />
-              {preview ? (
-                <div className="space-y-2">
-                  <img src={preview} alt="Preview" className="mx-auto max-h-64 rounded-md" />
-                  <p className="text-sm text-gray-400">{file?.name}</p>
+              {previews.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {previews.map((preview, index) => (
+                      <div key={index} className="relative group">
+                        <img 
+                          src={preview.url} 
+                          alt={`Preview ${index + 1}`} 
+                          className="w-full h-32 object-cover rounded-md"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeFile(index)
+                          }}
+                          className="absolute top-1 right-1 bg-red-500/80 hover:bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                        <p className="text-xs text-gray-400 mt-1 truncate">{preview.file.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {files.length} file{files.length > 1 ? 's' : ''} selected • Click to add more
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <Upload className="mx-auto h-8 w-8 text-gray-500" />
                   <p className="text-sm text-gray-400">
-                    {isDragActive ? "Drop the file here" : "Drag & drop or click to upload"}
+                    {isDragActive ? "Drop files here" : "Drag & drop or click to upload"}
                   </p>
-                  <p className="text-xs text-gray-500">PNG, JPG, WEBP up to 10MB</p>
+                  <p className="text-xs text-gray-500">PNG, JPG, WEBP up to 10MB each • Multiple files supported</p>
                 </div>
               )}
             </div>
@@ -398,7 +456,7 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
             </Button>
             <Button
               type="submit"
-              disabled={!file || !title.trim() || uploading}
+              disabled={files.length === 0 || !title.trim() || uploading}
               className="bg-[#4F7CFF] hover:bg-[#3D6AFF] text-white disabled:opacity-50"
             >
               {uploading ? (
