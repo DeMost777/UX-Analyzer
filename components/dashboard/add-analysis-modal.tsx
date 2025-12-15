@@ -27,7 +27,12 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
   const [error, setError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
+    console.log("onDrop called with", acceptedFiles.length, "accepted files")
+    if (rejectedFiles.length > 0) {
+      console.warn("Rejected files:", rejectedFiles)
+    }
+
     const validFiles: File[] = []
 
     // First, validate all files
@@ -48,8 +53,14 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
       validFiles.push(file)
     })
 
+    console.log("Valid files after validation:", validFiles.length)
+
     // Update files state immediately
-    setFiles((prev) => [...prev, ...validFiles])
+    setFiles((prev) => {
+      const updated = [...prev, ...validFiles]
+      console.log("Total files after update:", updated.length)
+      return updated
+    })
 
     // Load previews for all valid files
     validFiles.forEach((file) => {
@@ -72,17 +83,22 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
     setPreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     accept: {
       "image/*": [".png", ".jpg", ".jpeg", ".webp"],
     },
     multiple: true,
+    noClick: false, // Allow clicking to open file picker
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (files.length === 0 || !title.trim()) return
+    console.log("handleSubmit called with files.length:", files.length)
+    if (files.length === 0 || !title.trim()) {
+      console.warn("Cannot submit: files.length =", files.length, "title =", title.trim())
+      return
+    }
 
     setUploading(true)
     setStatus("Creating analysis...")
@@ -94,6 +110,8 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
       if (!currentUser) {
         throw new Error("User not authenticated. Please log in and try again.")
       }
+
+      console.log("Submitting with", files.length, "file(s):", files.map(f => f.name))
 
       // Validate all files before proceeding
       const validImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
@@ -415,9 +433,21 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {files.length} file{files.length > 1 ? 's' : ''} selected • Click to add more
-                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-gray-500">
+                      {files.length} file{files.length > 1 ? 's' : ''} selected
+                    </p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        open()
+                      }}
+                      className="text-xs text-[#4F7CFF] hover:text-[#3D6AFF] underline"
+                    >
+                      Add more files
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -425,7 +455,12 @@ export function AddAnalysisModal({ onClose, onAnalysisCreated }: AddAnalysisModa
                   <p className="text-sm text-gray-400">
                     {isDragActive ? "Drop files here" : "Drag & drop or click to upload"}
                   </p>
-                  <p className="text-xs text-gray-500">PNG, JPG, WEBP up to 10MB each • Multiple files supported</p>
+                  <p className="text-xs text-gray-500">
+                    PNG, JPG, WEBP up to 10MB each
+                  </p>
+                  <p className="text-xs text-blue-400 font-medium mt-1">
+                    💡 Tip: Hold Ctrl/Cmd while clicking to select multiple files
+                  </p>
                 </div>
               )}
             </div>
