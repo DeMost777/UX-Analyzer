@@ -114,3 +114,4 @@ analyses/user789/analysis456/screenshot.png  ❌ Rejected (different user)
 avatars/user123/profile.jpg                 ✅ Allowed (public read, user123 can write)
 ```
 
+
