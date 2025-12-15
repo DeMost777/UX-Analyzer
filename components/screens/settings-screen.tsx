@@ -43,9 +43,12 @@ export function SettingsScreen({ user, onBack, onLogout }: SettingsScreenProps) 
         if (!currentUser) return
 
         const userDoc = await getUserDocument(currentUser.uid)
-        if (userDoc?.preferences) {
-          setEnableWCAG(userDoc.preferences.enable_wcag_checks || false)
-          setEnableCognitiveLoad(userDoc.preferences.enable_cognitive_load_analysis || false)
+        if (userDoc) {
+          const preferences = (userDoc as any).preferences
+          if (preferences) {
+            setEnableWCAG(preferences.enable_wcag_checks || false)
+            setEnableCognitiveLoad(preferences.enable_cognitive_load_analysis || false)
+          }
         }
       } catch (error) {
         console.error("Failed to load preferences:", error)
