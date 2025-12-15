@@ -20,6 +20,7 @@ function checkBlobToken() {
 
 /**
  * Upload a screenshot to Vercel Blob Storage with progress tracking
+ * This function calls the API route which handles the upload server-side
  * @param file - The file to upload
  * @param userId - User ID for organizing files
  * @param analysisId - Analysis ID for organizing files
@@ -33,8 +34,6 @@ export async function uploadScreenshot(
   onProgress?: (progress: number) => void,
 ): Promise<string> {
   try {
-    checkBlobToken()
-
     // Validate file before upload
     if (!file || file.size === 0) {
       throw new Error("Invalid file: File is empty or not provided")
@@ -46,53 +45,45 @@ export async function uploadScreenshot(
       )
     }
 
-    // Create file path following the same structure as Firebase
-    const filePath = `analyses/${userId}/${analysisId}/${file.name}`
-    
-    console.log("Uploading file to Vercel Blob:", filePath, "Size:", file.size, "Type:", file.type)
+    console.log("Uploading file via API:", file.name, "Size:", file.size, "Type:", file.type)
 
-    // Simulate progress for small files (Vercel Blob doesn't have built-in progress)
-    // For larger files, we can track progress manually
+    // Simulate progress
     if (onProgress) {
-      // Simulate initial progress
       onProgress(10)
-      
-      // For files > 1MB, we'll simulate progress
-      if (file.size > 1024 * 1024) {
-        const chunkSize = file.size / 10
-        let uploaded = 0
-        
-        // Simulate progress in chunks
-        const progressInterval = setInterval(() => {
-          uploaded += chunkSize
-          const progress = Math.min(90, Math.round((uploaded / file.size) * 100))
-          onProgress(progress)
-          
-          if (progress >= 90) {
-            clearInterval(progressInterval)
-          }
-        }, 100)
-      } else {
-        onProgress(50)
-      }
     }
 
-    // Upload to Vercel Blob
-    const blob: PutBlobResult = await put(filePath, file, {
-      access: "public", // Public access for easy retrieval
-      contentType: file.type,
-      addRandomSuffix: false, // Keep original filename
+    // Create FormData to send to API route
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("userId", userId)
+    formData.append("analysisId", analysisId)
+
+    // Upload via API route (server-side)
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
     })
+
+    if (onProgress) {
+      onProgress(90)
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+      throw new Error(errorData.error || `Upload failed with status ${response.status}`)
+    }
+
+    const data = await response.json()
 
     if (onProgress) {
       onProgress(100)
     }
 
-    console.log("Upload completed, URL:", blob.url)
+    console.log("Upload completed, URL:", data.url)
 
-    return blob.url
+    return data.url
   } catch (error: any) {
-    console.error("Error uploading screenshot to Vercel Blob:", error)
+    console.error("Error uploading screenshot:", error)
     console.error("Error details:", {
       message: error?.message,
       stack: error?.stack,
