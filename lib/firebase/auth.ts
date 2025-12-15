@@ -37,6 +37,12 @@ export function firebaseUserToUser(firebaseUser: FirebaseUser): User {
   }
 }
 
+// Update user profile (wrapper for Firebase updateProfile)
+export async function updateUserProfile(user: FirebaseUser, updates: { displayName?: string; photoURL?: string }): Promise<void> {
+  checkFirebase()
+  await updateProfile(user, updates)
+}
+
 // Register new user
 export async function registerUser(email: string, password: string, name?: string): Promise<User> {
   try {

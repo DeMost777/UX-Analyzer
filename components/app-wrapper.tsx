@@ -6,12 +6,13 @@ import { LoginScreen } from "@/components/auth/login-screen"
 import { SignupScreen } from "@/components/auth/signup-screen"
 import { DashboardScreen } from "@/components/dashboard/dashboard-screen"
 import { FlowUXApp } from "@/components/flow-ux-app"
+import { SettingsScreen } from "@/components/screens/settings-screen"
 import { onAuthStateChange, logoutUser, getCurrentUser } from "@/lib/firebase/auth"
 import { getUserData } from "@/lib/firebase/auth"
 import type { Analysis } from "@/lib/db/types"
 import type { AnalysisResult } from "@/lib/types"
 
-type AppView = "login" | "signup" | "dashboard" | "analysis"
+type AppView = "login" | "signup" | "dashboard" | "analysis" | "settings"
 
 export function AppWrapper() {
   const [view, setView] = useState<AppView>("login")
@@ -73,6 +74,14 @@ export function AppWrapper() {
     setView("dashboard")
   }
 
+  const handleViewSettings = () => {
+    setView("settings")
+  }
+
+  const handleBackFromSettings = () => {
+    setView("dashboard")
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0D0D0D]">
@@ -90,7 +99,19 @@ export function AppWrapper() {
         <SignupScreen onSignup={handleSignup} onSwitchToLogin={() => setView("login")} />
       )}
       {view === "dashboard" && user && (
-        <DashboardScreen user={user} onLogout={handleLogout} onViewAnalysis={handleViewAnalysis} />
+        <DashboardScreen 
+          user={user} 
+          onLogout={handleLogout} 
+          onViewAnalysis={handleViewAnalysis}
+          onViewSettings={handleViewSettings}
+        />
+      )}
+      {view === "settings" && user && (
+        <SettingsScreen 
+          user={user} 
+          onBack={handleBackFromSettings}
+          onLogout={handleLogout}
+        />
       )}
       {view === "analysis" && currentAnalysis && (
         <FlowUXAppWithAnalysis

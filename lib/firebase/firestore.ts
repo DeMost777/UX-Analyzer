@@ -117,6 +117,35 @@ export async function getUserDocument(uid: string) {
   return { user_id: uid, ...userDoc.data() }
 }
 
+export async function updateUserDocument(
+  uid: string,
+  updates: {
+    avatar_url?: string | null
+    name?: string | null
+    preferences?: {
+      enable_wcag_checks?: boolean
+      enable_cognitive_load_analysis?: boolean
+    }
+  }
+): Promise<void> {
+  checkFirestore()
+  const updateData: any = {
+    updated_at: serverTimestamp(),
+  }
+
+  if (updates.avatar_url !== undefined) {
+    updateData.avatar_url = updates.avatar_url
+  }
+  if (updates.name !== undefined) {
+    updateData.name = updates.name
+  }
+  if (updates.preferences !== undefined) {
+    updateData.preferences = updates.preferences
+  }
+
+  await setDoc(doc(db!, "users", uid), updateData, { merge: true })
+}
+
 export async function updateUserLastLogin(uid: string) {
   checkFirestore()
   await updateDoc(doc(db!, "users", uid), {

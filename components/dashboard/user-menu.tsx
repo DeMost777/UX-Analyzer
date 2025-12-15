@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Settings } from "lucide-react"
+import { LogOut, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -19,9 +19,10 @@ interface UserMenuProps {
     avatar_url?: string
   }
   onLogout: () => void
+  onSettings?: () => void
 }
 
-export function UserMenu({ user, onLogout }: UserMenuProps) {
+export function UserMenu({ user, onLogout, onSettings }: UserMenuProps) {
   const getInitials = () => {
     if (user.name) {
       return user.name
@@ -61,11 +62,10 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
           <p className="text-xs text-gray-400 truncate">{user.email}</p>
         </div>
         <DropdownMenuSeparator className="bg-[#1A1A1A]" />
-        <DropdownMenuItem className="text-white hover:bg-[#1A1A1A] cursor-pointer">
-          <User className="mr-2 h-4 w-4" />
-          Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem className="text-white hover:bg-[#1A1A1A] cursor-pointer">
+        <DropdownMenuItem 
+          onClick={onSettings}
+          className="text-white hover:bg-[#1A1A1A] cursor-pointer"
+        >
           <Settings className="mr-2 h-4 w-4" />
           Settings
         </DropdownMenuItem>

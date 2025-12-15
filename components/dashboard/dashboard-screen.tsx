@@ -23,9 +23,10 @@ interface DashboardScreenProps {
   }
   onLogout: () => void
   onViewAnalysis: (analysis: Analysis) => void
+  onViewSettings?: () => void
 }
 
-export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScreenProps) {
+export function DashboardScreen({ user, onLogout, onViewAnalysis, onViewSettings }: DashboardScreenProps) {
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [filteredAnalyses, setFilteredAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
@@ -107,6 +108,11 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
       )
     }
     setShowAddModal(false)
+    
+    // Navigate to review page if analysis is completed
+    if (analysis.status === "completed" && analysis.result_json) {
+      onViewAnalysis(analysis)
+    }
   }
 
   const handleDeleteAnalysis = async (analysisId: string) => {
@@ -159,7 +165,7 @@ export function DashboardScreen({ user, onLogout, onViewAnalysis }: DashboardScr
                 <Plus className="mr-2 h-4 w-4" />
                 Add New
               </Button>
-              <UserMenu user={user} onLogout={onLogout} />
+              <UserMenu user={user} onLogout={onLogout} onSettings={onViewSettings} />
             </div>
           </div>
         </div>
